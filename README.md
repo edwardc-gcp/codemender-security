@@ -11,6 +11,17 @@ This skill empowers AI agents to autonomously discover AST/taint security vulner
 
 ---
 
+> [!NOTE]
+> **Access Allowlist & Availability**: CodeMender is currently available to a limited set of customers in **Public Preview** (Pre-GA) and requires an access allowlist. Contact your Google Cloud sales or account team to request access to the CodeMender CLI artifact repository and backend APIs.
+
+> [!WARNING]
+> **Pre-GA & Public Preview Notice**: CodeMender is currently in **Public Preview**. Pre-GA products are in various stages of internal testing and review. As such, customers should closely supervise the use of CodeMender, and not use CodeMender in situations where serious errors cannot be corrected. This product is made available to Customers solely for limited testing and evaluation, and may not be used for commercial or production purposes.
+
+> [!CAUTION]
+> **Safety Filters & Human Confirmation Notice**: When disabling human confirmation of write and tool execution actions (as configured in `~/.codemender/config.yaml` or non-interactive CLI flags like `-y` and `--bypass-warning`), Customer is responsible for such modification under Section 20(j) (*"Modifying, Disregarding, or Disabling Safety Filters"*) of the Google Cloud Service Specific Terms. Customers agree not to automatically bypass or circumvent other responses requiring human confirmation.
+
+---
+
 ## ⚡ Key Capabilities
 
 ```
@@ -35,7 +46,7 @@ This skill empowers AI agents to autonomously discover AST/taint security vulner
 ```
 .
 ├── SKILL.md                          # Primary agent skill definition and instructions
-├── README.md                         # Repository documentation and setup guide
+├── README.md                         # Repository documentation, disclaimers, and setup guide
 ├── .gitignore                        # Standard ignore rules for temporary artifacts
 ├── references/                       # Deep reference documents
 │   ├── cli_reference.md              # Advanced command catalog, session lifecycle, and error matrix
@@ -64,6 +75,9 @@ git clone https://github.com/edwardc-gcp/codemender-security.git .agents/skills/
 ```
 
 ### 2. Install the CodeMender CLI (`cm`)
+
+> [!IMPORTANT]
+> Downloading the binary requires Google Cloud project allowlisting on the Artifact Registry repository.
 
 Run the bundled cross-platform installer:
 
