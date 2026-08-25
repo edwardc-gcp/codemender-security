@@ -1,0 +1,9 @@
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# Temporary & Cache files
+*.tmp
+*.log
+.exploit/
+.codemender/state.db
