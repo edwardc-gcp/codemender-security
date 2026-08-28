@@ -22,24 +22,46 @@ This skill equips Antigravity agents to autonomously discover AST and taint secu
 
 ---
 
-## ⚡ Key Capabilities & Workflow
+## ⚡ Key Capabilities & State Machine Workflow
 
-CodeMender operates through an autonomous four-phase closed-loop workflow:
+CodeMender operates through an autonomous, **State-Aware State Machine** designed for real-world multi-turn development workflows:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        CodeMender Workflow Loop                        │
-├─────────────────┬─────────────────┬──────────────────┬─────────────────┤
-│ 1. DISCOVER     │ 2. VERIFY (PoC) │ 3. REMEDIATE     │ 4. REPORT       │
-│ cm find .       │ cm verify <id>  │ cm fix <id>      │ cm report       │
-│ (AST & Taint)   │ (Live Exploit)  │ (Patch & Test)   │ (SARIF / HTML)  │
-└─────────────────┴─────────────────┴──────────────────┴─────────────────┘
+                     ┌──────────────────────────────┐
+                     │ Phase 0: Rapid State Probing │
+                     │   (Zero-Token CWD Probe)     │
+                     └──────────────┬───────────────┘
+                                    │
+       ┌────────────────────────────┼────────────────────────────┐
+       ▼                            ▼                            ▼
+[Condition A: Clean Workspace] [Condition B: Dirty Working Tree] [Condition C: Interrupted Task]
+Run Initial Full Scan         Run Incremental Reconcile     Resume Active Session
+(cm find . -y)                (cm find --diff-only -y)      (cm session resume <id>)
+       │                            │                            │
+       └────────────────────────────┼────────────────────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │ Phase 1: Contextual Triage   │
+                     │  (Read .exploit/ or Verify)  │
+                     └──────────────┬───────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │ Phase 2: Patch & Test Loop   │
+                     │  cm fix ➔ npm test ➔ Status  │
+                     └──────────────┬───────────────┘
+                                    ▼
+                     ┌──────────────────────────────┐
+                     │ Phase 3: Session Retention   │
+                     │ (Preserve state / Clean only │
+                     │   when explicitly asked)     │
+                     └──────────────────────────────┘
 ```
 
-1. **AST & Taint Discovery (`cm find`)**: Headless full-codebase AST and data-flow taint analysis with automated severity prioritization (Critical and High first).
-2. **Autonomous Exploit Verification (`cm verify`)**: Synthesizes and executes dynamic PoC exploit payloads under `.exploit/` (e.g., `poc.js`, `exploit.py`, `REPORT.md`) to eliminate false positives.
-3. **Patch Synthesis & Regression Testing (`cm fix`)**: Synthesizes language-aware patches and automatically executes configured test suites (`npm test`, `pytest`, `cargo test`) to ensure zero behavioral regression.
-4. **Enterprise SARIF & HTML Reporting (`cm report`)**: Exports standard OASIS SARIF v2.1.0 reports for GitHub Advanced Security / CI/CD pipelines, or interactive standalone HTML audit dashboards.
+1. **State-Aware Entry Probing (`cm report` & `git status`)**: Rapidly evaluates workspace status to avoid redundant full scans, leveraging cached AST states and incremental analysis.
+2. **AST & Taint Discovery (`cm find`)**: Headless full-codebase AST and data-flow taint analysis powered by `gemini-3.7-flash` with automated severity prioritization.
+3. **Autonomous Exploit Verification (`cm verify`)**: Synthesizes and executes dynamic PoC exploit payloads under `.exploit/` (e.g., `poc.js`, `exploit.py`, `REPORT.md`) inside process-level isolation to eliminate false positives.
+4. **Patch Synthesis & Regression Testing (`cm fix`)**: Synthesizes language-aware patches and automatically executes configured test suites (`npm test`, `pytest`, `cargo test`) to ensure zero behavioral regression.
+5. **Enterprise SARIF & HTML Reporting (`cm report`)**: Exports standard OASIS SARIF v2.1.0 reports for GitHub Advanced Security / CI/CD pipelines, or interactive standalone HTML audit dashboards.
 
 ---
 
@@ -52,7 +74,7 @@ CodeMender operates through an autonomous four-phase closed-loop workflow:
 ├── LICENSE                           # Apache 2.0 open-source license
 ├── .gitignore                        # Ignore rules for OS, cache, and temporary exploit files
 ├── references/                       # Deep reference documentation
-│   ├── cli_reference.md              # Advanced command catalog, session lifecycle, and error matrix
+│   ├── cli_reference.md              # Advanced command catalog, sandboxing, and session matrix
 │   ├── config_schema.md              # Complete schema reference for .codemender/config.yaml
 │   └── vibe_coding_pitfalls.md       # Top GenAI & Vibe Coding security vulnerability patterns
 └── scripts/
@@ -120,15 +142,18 @@ git submodule add https://github.com/edwardc-gcp/codemender-security.git .agents
 
 | Operation | Command | Description |
 | :--- | :--- | :--- |
-| **Full Codebase Scan** | `cm find . -y --unrestricted --model gemini-3.5-flash` | Scans entire repository for AST/taint vulnerabilities. |
-| **Scan PR / Diff Only** | `cm find . -y --diff-only --unrestricted` | Analyzes only modified files or uncommitted Git diffs. |
+| **Full Codebase Scan** | `cm find . -y --unrestricted --model gemini-3.7-flash` | Scans entire repository for AST/taint vulnerabilities (Gemini 3.7 Flash default). |
+| **Scan PR / Diff Only** | `cm find . -y --diff-only --unrestricted` | Analyzes only modified files or uncommitted Git diffs (Incremental reconciliation). |
 | **Severity Filter** | `cm find . -y --severity CRITICAL,HIGH --unrestricted` | Filters discovery to high-impact findings only. |
+| **Live Token Counter** | `cm find . -y --compact --unrestricted` | Displays rolling token counter (`Tokens: 40k in / 12k out / 60k total`). |
 | **Verify Finding (PoC)** | `cm verify <finding-id> --unrestricted --bypass-warning -y` | Generates and executes live exploit PoC under `.exploit/`. |
 | **Guided Remediation** | `cm fix <finding-id> -c "<guidance>" --unrestricted -y` | Generates patch guided by context (e.g., `-c "Use Secret Manager"`). |
 | **Inspect Patch Diff** | `cm vcs diff` | Displays unified diff synthesized by the remediation agent. |
 | **Rollback Patch** | `cm vcs revert` | Reverts patch changes if test validation fails. |
 | **Export SARIF for CI/CD** | `cm report -f sarif > results.sarif` | Outputs OASIS SARIF v2.1.0 for GitHub Code Scanning / CI. |
 | **Interactive HTML Report**| `cm report -f html > report.html` | Generates self-contained HTML vulnerability dashboard. |
+| **Update CodeMender CLI** | `cm update` | Checks for updates and performs atomic CLI upgrade. |
+| **View Token Statistics** | `cm stats` | Summarizes token usage (input, output, cached, thought, tool-use). |
 
 ---
 
@@ -139,20 +164,35 @@ CodeMender can be customized on a per-project basis via `.codemender/config.yaml
 ```yaml
 version: 1
 team_id: "secops-team"
-model: gemini-3.5-flash
+model: "gemini-3.7-flash"
 
 scan:
   extensions:
     include: [".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".rs"]
-    exclude: ["node_modules", ".git", "dist", "build", "*.min.js"]
+    exclude: ["node_modules", "vendor", ".git", "dist", "build", "bin", "*.min.js"]
   max_file_size_kb: 500
   incremental: true
 
 build:
   # Executed automatically by `cm fix` to verify zero regressions before applying patches
-  command: "npm test" # Alternatives: "pytest", "go test ./...", "cargo test"
+  command: "npm test" # Alternatives: "pytest", "go test ./...", "cargo test", "make build && make test"
+
+sandbox:
+  enabled: true       # Runs local tool execution inside process-level sandbox
+  mounts:
+    target_dir: "."
+  network:
+    profile: "permissive-closed"  # Options: "permissive-closed" (isolated) | "permissive-open"
+
+security:
+  protected_files:
+    - "~/.ssh/*"
+    - "~/.gnupg/*"
+
+project_paths: []
 
 tools:
+  human_confirmation: true
   confirm_commands: false
   confirm_writes: false
 
@@ -166,7 +206,7 @@ For full details on configuration options, see the [Configuration Schema Referen
 
 ## 📚 Deep Dive References
 
-- [CLI Advanced Reference & Troubleshooting](references/cli_reference.md): Detailed parameter specifications, session resume lifecycle, and error matrix.
+- [CLI Advanced Reference & Troubleshooting](references/cli_reference.md): Detailed parameter specifications, OS sandboxing architecture, session resume lifecycle, and error matrix.
 - [Configuration Schema](references/config_schema.md): Complete specification for `.codemender/config.yaml`.
 - [GenAI & Vibe Coding Pitfalls](references/vibe_coding_pitfalls.md): Top 5 vulnerability patterns in LLM-generated code and remediation strategies.
 
@@ -175,3 +215,4 @@ For full details on configuration options, see the [Configuration Schema Referen
 ## 🛡️ License
 
 Distributed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
+
