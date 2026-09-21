@@ -7,7 +7,7 @@ description: Autonomous security auditing, fast differential AST scanning, third
 
 This skill guides coding agents (Antigravity, Claude Code, OpenAI Codex, Gemini CLI) to discover, triage, and verify security vulnerabilities using the Google Cloud CodeMender (`cm`) CLI.
 
-It delivers **grounded, zero-false-positive security audits** by executing dynamic proof-of-concept (PoC) exploits inside an isolated local OS-level sandbox before presenting findings to developers.
+It delivers **grounded, empirical security audits** by executing dynamic proof-of-concept (PoC) exploits inside an isolated local OS-level sandbox before presenting findings to developers.
 
 ---
 
@@ -16,7 +16,7 @@ It delivers **grounded, zero-false-positive security audits** by executing dynam
 * **Scanning a freshly generated / vibe-coded application**: ➔ Run **Workflow A (Full Scan)**.
 * **Scanning uncommitted Git changes or PR diff**: ➔ Run **Workflow B (Incremental Scan)**.
 * **Verifying external SAST findings (Semgrep / Snyk / SonarQube)**: ➔ Run **Workflow C (Report Ingestion)**.
-* **Eliminating false positives on candidate findings**: ➔ Run **Workflow D (PoC Verification)**.
+* **Confirming exploitability on candidate findings**: ➔ Run **Workflow D (PoC Verification)**.
 
 ---
 
@@ -54,7 +54,7 @@ fi
 When a user asks to audit a newly created project or perform a comprehensive security pass:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y --compact
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
 ```
 * CodeMender performs deep AST and taint analysis across all supported source files.
 * Identifies unauthenticated endpoints, hardcoded credentials, open CORS policies, and injection sinks.
@@ -63,7 +63,11 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
 When the user has modified files and wants a fast safety check:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y --diff-only --compact
+# Leverages .codemender/state.db when scan.incremental is true (default in config.yaml)
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+
+# Or target specifically modified paths:
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find ./src/auth/ -y
 ```
 * Leverages local AST caching to scan **only modified code slices**.
 * Completes in 5–15 seconds with minimal token consumption.
@@ -86,16 +90,18 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report im
 Raw static analysis findings can contain false positives. For every Critical or High candidate finding, **execute an autonomous exploit verification test**:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <finding-id> -y --compact
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <finding-id> --no-reset -y
 ```
 
 ### What happens under the hood:
 1. The cloud reasoning engine synthesizes a customized exploit script (`poc.js`, `exploit.py`, or `exploit.sh`).
-2. The local daemon executes the exploit inside an isolated OS-level process sandbox (`exebox`).
+2. The local daemon executes the exploit inside an isolated OS-level process sandbox (`exebox`). `--no-reset` ensures working directory changes are not wiped by CLI resets.
 3. If the exploit triggers unexpected behavior (e.g., unauthorized data leak, SQL error, path traversal):
-   - Status is marked as **Confirmed**.
+   - Status in `cm report` is updated to **`VERIFIED`**.
    - Root Cause Analysis and reproduction artifacts are saved in `${PROJECT_ROOT}/.exploit/<finding-id>/REPORT.md`.
-4. If the exploit fails, the finding is marked as **Unconfirmed / False Positive**, sparing developer fatigue.
+4. If the exploit fails to reproduce, the finding remains **`OPEN / UNCONFIRMED`** for manual security inspection.
+   > [!WARNING]
+   > Do **NOT** automatically dismiss unconfirmed findings as false positives. In dynamic exploits, failures frequently stem from offline dev servers, unseeded test databases, or missing mock sessions.
 
 > [!NOTE]
 > For Web vulnerabilities (e.g. CORS, SQLi on HTTP endpoints), ensure the local application server or mock service is listening if the exploit makes HTTP network probes.
@@ -115,9 +121,9 @@ Present findings in a structured Markdown table:
 
 | Finding ID | Severity | Status | CWE | Vulnerable Location | Verified PoC |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `f-1a2b3c` | CRITICAL | Confirmed | CWE-89 (SQL Injection) | `src/auth/login.go:45` | `.exploit/f-1a2b3c/poc.js` |
-| `f-4d5e6f` | HIGH | Confirmed | CWE-22 (Path Traversal) | `src/api/files.ts:88` | `.exploit/f-4d5e6f/exploit.py` |
-| `f-7g8h9i` | MEDIUM | Unconfirmed | CWE-798 (Hardcoded Key) | `config/default.json:12` | Unverified |
+| `f-1a2b3c` | CRITICAL | VERIFIED | CWE-89 (SQL Injection) | `src/auth/login.go:45` | `.exploit/f-1a2b3c/poc.js` |
+| `f-4d5e6f` | HIGH | VERIFIED | CWE-22 (Path Traversal) | `src/api/files.ts:88` | `.exploit/f-4d5e6f/exploit.py` |
+| `f-7g8h9i` | MEDIUM | OPEN | CWE-798 (Hardcoded Key) | `config/default.json:12` | Unverified |
 
 ### SARIF Export for CI/CD:
 If requested, generate standard SARIF 2.1.0 output:

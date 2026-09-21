@@ -83,8 +83,13 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm fix <find
 
 Once CodeMender successfully applies a validated patch, inspect and stage the changes:
 
-### 1. Review Diff
+### 1. Review Diff on Disk
+Verify real file changes with `git diff`:
 ```bash
+# Verify modified working files directly
+git diff
+
+# Or using cm vcs wrapper
 HOME="${PROJECT_ROOT}" cm vcs diff
 ```
 * Present the unified diff to the developer with an explanation of why the fix is safe.
@@ -109,18 +114,21 @@ When fixing multiple findings across a repository, avoid naive shell loops which
 
 ```bash
 # 1. Query verified findings
-FINDINGS=$(HOME="${PROJECT_ROOT}" cm report -f json | jq -r '.findings[] | select(.verified == true) | .id')
+FINDINGS=$(HOME="${PROJECT_ROOT}" cm report -f json | jq -r '.findings[] | select(.status == "VERIFIED") | .id')
 
 # 2. Iterate atomically: One fix -> Verify -> Commit -> Next
 for fid in $FINDINGS; do
   echo "--- Remediating Finding: $fid ---"
   HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm fix "$fid" -y
   
+  # Verify diff was applied to working directory
+  git diff --stat
+  
   # Commit atomically to preserve patch
   git commit -am "security(cm): remediate finding $fid" || true
   
   # Reconcile AST cache incrementally before next fix
-  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . --diff-only --compact
+  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
 done
 
 # 3. Export final clean report
