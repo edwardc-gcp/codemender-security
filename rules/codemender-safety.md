@@ -28,16 +28,16 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm <command>
 ## 2. Non-Destructive VCS Guardrail (Zero Data Loss Mandate)
 
 **CRITICAL**: Developers frequently run security audits on repositories containing uncommitted, in-progress code.
-A blind `cm vcs reset` or failed `cm fix` could hard-reset the working directory, destroying hours of manual developer work.
+A blind `cm vcs reset` (which runs `git checkout HEAD -- . && git clean -fd`) or unhandled exploit reset could destroy hours of manual developer work.
 
 ### Mandatory Pre-Fix Safety Check:
-Before executing ANY `cm fix` or `cm vcs reset`:
+Before executing ANY `cm fix`, `cm verify`, or `cm vcs reset`:
 1. Check working tree cleanliness:
    ```bash
    DIRTY=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
    ```
 2. If `DIRTY > 0`:
-   - **Either automatically stash changes**:
+   - **Automatically stash changes**:
      ```bash
      git stash push -m "cm-pre-fix-backup-$(date +%s)"
      ```
@@ -45,7 +45,8 @@ Before executing ANY `cm fix` or `cm vcs reset`:
      ```bash
      git checkout -b "cm-fix-$(date +%s)"
      ```
-3. **NEVER** run `cm vcs reset` when unstashed manual changes exist!
+3. **Double Guardrail**: When running `cm verify`, pass `--no-reset` to suppress internal CLI resets while keeping `git stash` as the primary defense.
+4. **NEVER** run `cm vcs reset` when unstashed manual changes exist!
 
 ---
 
@@ -71,14 +72,15 @@ When multiple vulnerabilities are identified across a codebase:
 * **Enforce the Atomic Loop**:
   1. Pick the highest priority verified finding.
   2. Run `HOME="${PROJECT_ROOT}" cm fix <id> -c "<guidance>" -y`.
-  3. Validate `build.command` and Re-Attack PoC pass.
+  3. Validate `build.command` and verify diff on disk (`git diff`).
   4. Create an atomic Git commit: `git commit -am "security(cm): fix <cwe> in <file>"`.
-  5. Run an incremental reconciliation scan (`cm find . --diff-only --compact`) before fixing the next finding.
+  5. Run an incremental reconciliation scan (`HOME="${PROJECT_ROOT}" cm find . -y`) to update `.codemender/state.db` before fixing the next finding.
 
 ---
 
-## 5. Process-Level Sandboxing
+## 5. Process-Level Sandboxing & Triage Integrity
 
 1. Always keep `--sandbox=true` enabled (the default).
 2. Do **NOT** pass `--unrestricted` or `--sandbox=false` unless explicitly approved by the human operator.
 3. For Web service vulnerabilities, ensure the local service is running or mock endpoints are responsive before executing `cm verify`.
+4. **Triage Integrity**: Never classify a failed PoC execution as a "False Positive". Dynamic exploits frequently fail due to offline servers or environment mismatch. Mark as `UNCONFIRMED / OPEN` for manual inspection.
