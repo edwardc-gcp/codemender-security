@@ -16,10 +16,10 @@ This plugin equips AI coding assistants to autonomously discover AST and taint v
 
 This plugin is engineered around the two most critical real-world development workflows:
 
-### 1. Scenario A: Post-Vibe-Coding Hardening Pass (全新 Vibe Coding 專案資安收斂)
+### 1. Scenario A: Post-Vibe-Coding Hardening Pass
 * **When**: Right after building an MVP in an afternoon using AI tools (Cursor, Bolt, Lovable, Antigravity, Claude Code).
 * **The Problem**: The app works, but contains typical GenAI pitfalls (hardcoded API keys, permissive `allow read, write: if true;`, open CORS, unsanitized SQL/prompt concatenation) and **lacks unit tests**.
-* **User Prompt**: *"剛剛用 AI 寫完這個全端專案，幫我做一次全面的安全盤點與加固，把所有低級資安漏洞修掉，我要準備上線了。"*
+* **User Prompt**: *"I just finished building this full-stack project with AI; do a comprehensive security audit and hardening pass, fix all low-hanging vulnerabilities before I go to production."*
 * **Adaptive Defense**:
   1. Automated project scoping & initialization (`cm init`).
   2. Full AST and taint discovery (`cm find . -y`).
@@ -28,10 +28,10 @@ This plugin is engineered around the two most critical real-world development wo
   5. Context-aware patch synthesis with secure defaults (`cm fix <id> -c "..." -y`).
   6. Stage clean code (`git diff`, `cm vcs stage`) and export summary.
 
-### 2. Scenario B: Legacy Enterprise Repo Audit & Zero-Regression Fix (既有系統深度審計與零回歸修復)
+### 2. Scenario B: Legacy Enterprise Repo Audit & Zero-Regression Fix
 * **When**: Auditing established enterprise repositories with extensive test suites, or ingesting external SAST reports.
 * **The Problem**: Traditional SAST tools (Semgrep, Snyk, SonarQube) generate alert fatigue, and engineers fear security patches might break existing business logic or wipe uncommitted changes.
-* **User Prompt**: *"對我們的既有後端服務做安全審查，優先驗證哪些是真實漏洞，修復時絕不能讓現有測試壞掉。"* or *"這是資安團隊給的 `semgrep.sarif` 報告，幫我驗證哪些是假警報並把真的修掉。"*
+* **User Prompt**: *"Perform a security review of our existing backend service, prioritize verifying real exploitable vulnerabilities, and ensure existing test suites never break."* or *"Here is a `semgrep.sarif` report from our security team; verify which ones are false positives and remediate the real vulnerabilities."*
 * **Grounded Defense**:
   1. Incremental scan (`cm find . -y` using `scan.incremental: true`) or SAST ingestion (`cm report import -f semgrep.sarif`).
   2. Grounded PoC sandbox execution (`cm verify <id> --no-reset -y`) to verify exploitability.
@@ -94,31 +94,87 @@ codemender-security/
 
 ---
 
-## 🚀 Installation
+## 🚀 Quick & Convenient Plugin Installation
+
+Because this repository implements the **Universal Agent Plugin Standard (`agent-plugins.org`)**, you can install it seamlessly across your preferred AI coding environments:
 
 ### 1. In Google Antigravity
-Clone to your global skills directory:
-```bash
-git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/skills/codemender-security
-```
+Install as a global plugin (available across all projects on your machine) or as a workspace plugin (shared with your team via version control):
+
+* **Global Plugin (Recommended)**:
+  ```bash
+  git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/plugins/codemender-security
+  ```
+  *Antigravity automatically discovers the plugin manifest, loads `rules/codemender-safety.md`, and exposes both `codemender-audit` and `codemender-remediate` skills.*
+
+* **Workspace Plugin (Team-shared in repo)**:
+  ```bash
+  git clone https://github.com/edwardc-gcp/codemender-security.git .agents/plugins/codemender-security
+  # Or as a submodule:
+  git submodule add https://github.com/edwardc-gcp/codemender-security.git .agents/plugins/codemender-security
+  ```
+
+* **Via Antigravity IDE UI**:
+  Open **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL** → paste `https://github.com/edwardc-gcp/codemender-security.git`.
 
 ### 2. In Anthropic Claude Code
+Install with a single command via the Claude Code plugin manager:
 ```bash
 claude plugin add https://github.com/edwardc-gcp/codemender-security.git
 ```
+*Claude Code detects `.claude-plugin/plugin.json` and loads operational guidelines from `CLAUDE.md`.*
 
-### 3. In OpenAI Codex
-Place the repository in your configured Codex plugin path or reference it in your workspace `.codex-plugin/`.
+### 3. In Gemini CLI
+Install as an official extension:
+```bash
+gemini extensions install https://github.com/edwardc-gcp/codemender-security.git
+```
+*Gemini CLI recognizes `gemini-extension.json` and mounts the `codemender-security` capabilities.*
 
-### 4. Prerequisites
-1. **Google Cloud ADC**: Authenticate with Application Default Credentials:
+### 4. In OpenAI Codex & Universal Runtimes
+Clone into your project's agent plugin directory:
+```bash
+git clone https://github.com/edwardc-gcp/codemender-security.git .codex/plugins/codemender-security
+```
+*Or install using the Universal Agent Plugin CLI:*
+```bash
+agent-plugin install https://github.com/edwardc-gcp/codemender-security.git
+```
+
+---
+
+## 🔑 Prerequisites & Engine Setup
+
+To enable the autonomous security agent to execute scans, verify exploits, and apply patches, two prerequisites are required:
+
+1. **Google Cloud Application Default Credentials (ADC)**:
+   Authenticate your local development machine with Google Cloud:
    ```bash
    gcloud auth application-default login
    ```
-2. **CodeMender CLI (`cm`)**: Install via the bundled script:
+   *(Ensure your active Google Cloud project has access to the Gemini Enterprise Agent Platform or Vertex AI).*
+
+2. **Google Cloud CodeMender CLI (`cm`)**:
+   Install the official `cm` binary using the bundled helper script:
    ```bash
    bash scripts/install_cm.sh
    ```
+   *(Or verify installation with `cm --version`; requires `cm 0.8.0+`).*
+
+---
+
+## 💬 Natural Language Prompting (Example Prompts)
+
+Once installed, simply converse naturally with your AI coding agent in English or your preferred language. The agent will autonomously activate the appropriate workflow:
+
+* **Post-Vibe-Coding Hardening**:
+  > *"I just finished building this full-stack project with AI; do a comprehensive security audit and hardening pass, run PoC verification in the sandbox, and remediate all real vulnerabilities while ensuring the build passes."*
+
+* **Targeted Verification & Fix**:
+  > *"Triage this third-party SAST report with CodeMender, verify which candidates are false positives, and generate zero-regression patches for the real ones."*
+
+* **Incremental Diff Audit**:
+  > *"Audit the changes on my current branch to make sure no new OWASP Top 10 vulnerabilities or auth regressions were introduced."*
 
 ---
 
