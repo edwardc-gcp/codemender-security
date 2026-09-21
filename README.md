@@ -94,87 +94,31 @@ codemender-security/
 
 ---
 
-## 🚀 Quick & Convenient Plugin Installation
-
-Because this repository implements the **Universal Agent Plugin Standard (`agent-plugins.org`)**, you can install it seamlessly across your preferred AI coding environments.
+## 🚀 Installation
 
 ### 1. In Google Antigravity
-Install as a global plugin (available across all projects on your machine) or as a workspace plugin (shared with your team via git):
-
-* **Global Plugin (Recommended)**:
-  ```bash
-  git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/plugins/codemender-security
-  ```
-  *Antigravity automatically discovers the plugin manifest, loads `rules/codemender-safety.md`, and exposes both `codemender-audit` and `codemender-remediate` skills.*
-
-* **Workspace Plugin (Team-shared in repo)**:
-  ```bash
-  git clone https://github.com/edwardc-gcp/codemender-security.git .agents/plugins/codemender-security
-  # Or as a submodule:
-  git submodule add https://github.com/edwardc-gcp/codemender-security.git .agents/plugins/codemender-security
-  ```
-
-* **Via Antigravity IDE UI**:
-  Open **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL** → paste `https://github.com/edwardc-gcp/codemender-security.git`.
+Clone to your global skills directory:
+```bash
+git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/skills/codemender-security
+```
 
 ### 2. In Anthropic Claude Code
-Install with a single command via the Claude Code plugin manager:
 ```bash
 claude plugin add https://github.com/edwardc-gcp/codemender-security.git
 ```
-*Claude Code detects `.claude-plugin/plugin.json` and loads operational guidelines from `CLAUDE.md`.*
 
-### 3. In Gemini CLI
-Install as an official extension:
-```bash
-gemini extensions install https://github.com/edwardc-gcp/codemender-security.git
-```
-*Gemini CLI recognizes `gemini-extension.json` and mounts the `codemender-security` capabilities.*
+### 3. In OpenAI Codex
+Place the repository in your configured Codex plugin path or reference it in your workspace `.codex-plugin/`.
 
-### 4. In OpenAI Codex & Universal Runtimes
-Clone into your project's agent plugin directory:
-```bash
-git clone https://github.com/edwardc-gcp/codemender-security.git .codex/plugins/codemender-security
-```
-*Or install using the Universal Agent Plugin CLI:*
-```bash
-agent-plugin install https://github.com/edwardc-gcp/codemender-security.git
-```
-
----
-
-## 🔑 Prerequisites & Engine Setup
-
-To enable the autonomous security agent to execute scans, verify exploits, and apply patches, two prerequisites are required:
-
-1. **Google Cloud Application Default Credentials (ADC)**:
-   Authenticate your local development machine with Google Cloud:
+### 4. Prerequisites
+1. **Google Cloud ADC**: Authenticate with Application Default Credentials:
    ```bash
    gcloud auth application-default login
    ```
-   *(Ensure your active Google Cloud project has access to the Gemini Enterprise Agent Platform or Vertex AI).*
-
-2. **Google Cloud CodeMender CLI (`cm`)**:
-   Install the official `cm` binary using the bundled helper script:
+2. **CodeMender CLI (`cm`)**: Install via the bundled script:
    ```bash
    bash scripts/install_cm.sh
    ```
-   *(Or verify installation with `cm --version`; requires `cm 0.8.0+`).*
-
----
-
-## 💬 Natural Language Prompting (Example Prompts)
-
-Once installed, simply converse naturally with your AI coding agent. The agent will autonomously activate the appropriate workflow:
-
-* **Post-Vibe-Coding Hardening**:
-  > *"剛剛用 AI 寫完這個全端專案，幫我做一次全面的安全盤點與加固，在沙箱跑 PoC 驗證哪些是真實漏洞，修復它們並確保代碼能正常建置。"*
-
-* **Targeted Verification & Fix**:
-  > *"對這份第三方 SAST 報告進行分類審核，用 CodeMender 驗證哪些是假警報，並為真實漏洞生成零回歸修復補丁。"*
-
-* **Incremental Diff Audit**:
-  > *"審計我在這個分支上修改的代碼，確認沒有引進新的 OWASP Top 10 或權限漏洞。"*
 
 ---
 
