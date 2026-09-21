@@ -1,218 +1,126 @@
-# CodeMender Autonomous Security Skill (`/codemender-security`)
+# CodeMender Universal Security Plugin (`codemender-security`)
 
-[![Skill: Antigravity](https://img.shields.io/badge/Antigravity-Skill-4285F4?style=flat&logo=google)](https://github.com/topics/antigravity-skill)
-[![CLI: CodeMender](https://img.shields.io/badge/CodeMender_CLI-cm-34A853?style=flat)](https://cloud.google.com)
-[![Platform: Google Cloud](https://img.shields.io/badge/Platform-Gemini_Enterprise-EA4335?style=flat&logo=googlecloud)](https://cloud.google.com)
+[![Plugin Standard: agent-plugins.org](https://img.shields.io/badge/Plugin_Standard-agent--plugins.org_v1.0-blue)](https://agent-plugins.org)
+[![Supported Agents: Antigravity | Claude Code | Codex | Gemini CLI](https://img.shields.io/badge/Agents-Antigravity_%7C_Claude_Code_%7C_Codex_%7C_Gemini_CLI-4285F4)](https://cloud.google.com)
+[![Platform: Google Cloud](https://img.shields.io/badge/Platform-Gemini_Enterprise_Agent_Platform-EA4335?logo=googlecloud)](https://cloud.google.com)
+[![Engine: CodeMender CLI (cm)](https://img.shields.io/badge/Engine-CodeMender_cm_0.8.0+-34A853)](https://docs.cloud.google.com/gemini-enterprise-agent-platform/codemender)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-An autonomous AI Security Co-developer skill for **Google Antigravity** and the **Gemini Enterprise Agent Platform**, powered by the **CodeMender CLI (`cm`)**.
+An enterprise autonomous AI Security Co-developer plugin for **Google Antigravity**, **Anthropic Claude Code**, **OpenAI Codex**, and **Gemini CLI**, powered natively by the **Google Cloud CodeMender (`cm`)** CLI on the Gemini Enterprise Agent Platform.
 
-This skill equips Antigravity agents to autonomously discover AST and taint security vulnerabilities, synthesize and execute live exploit Proof-of-Concepts (PoCs), perform Root Cause Analysis (RCA), synthesize context-aware remediation patches validated against local test suites, and generate enterprise compliance reports in SARIF and HTML formats.
-
----
-
-> [!NOTE]
-> **Access Allowlist & Availability**: CodeMender is currently available to a limited set of customers in **Public Preview** (Pre-GA) and requires Google Cloud project allowlisting. Contact your Google Cloud sales or account team to request access to the CodeMender CLI artifact repository and backend APIs.
-
-> [!WARNING]
-> **Pre-GA & Public Preview Notice**: Pre-GA products are in various stages of internal testing and review. As such, customers should closely supervise the use of CodeMender, and not use CodeMender in situations where serious errors cannot be corrected. This product is made available solely for limited testing and evaluation, and may not be used for commercial or production purposes.
-
-> [!CAUTION]
-> **Safety Filters & Human Confirmation Notice**: When disabling human confirmation of write and tool execution actions (as configured in `~/.codemender/config.yaml` or non-interactive CLI flags like `-y` and `--bypass-warning`), Customer is responsible for such modification under Section 20(j) (*"Modifying, Disregarding, or Disabling Safety Filters"*) of the Google Cloud Service Specific Terms. Customers agree not to automatically bypass or circumvent other responses requiring human confirmation.
+This plugin equips AI coding assistants to autonomously discover AST and taint vulnerabilities, synthesize and execute live exploit Proof-of-Concepts (PoCs) in local OS-level process sandboxes, perform Root Cause Analysis (RCA), synthesize context-aware remediation patches validated against local unit tests with automated PoC re-attacks, and generate compliance reports in SARIF and HTML formats.
 
 ---
 
-## ⚡ Key Capabilities & State Machine Workflow
+## ⚡ Two Archetypal Developer Scenarios
 
-CodeMender operates through an autonomous, **State-Aware State Machine** designed for real-world multi-turn development workflows:
+This plugin is engineered around the two most critical real-world development workflows:
 
+### 1. Scenario A: Post-Vibe-Coding Hardening Pass (全新 Vibe Coding 專案資安收斂)
+* **When**: Right after building an MVP in an afternoon using AI tools (Cursor, Bolt, Lovable, Antigravity, Claude Code).
+* **The Problem**: The app works, but contains typical GenAI pitfalls (hardcoded API keys, permissive `allow read, write: if true;`, open CORS, unsanitized SQL/prompt concatenation) and **lacks unit tests**.
+* **User Prompt**: *"剛剛用 AI 寫完這個全端專案，幫我做一次全面的安全盤點與加固，把所有低級資安漏洞修掉，我要準備上線了。"*
+* **Adaptive Defense**:
+  1. Automated project scoping & initialization (`cm init -y`).
+  2. Full AST and taint discovery (`cm find . -y --compact`).
+  3. Grounded PoC exploit generation in sandbox (`cm verify <id>`).
+  4. **Test-Adaptive Degradation**: Automatically sets `build.command` to typecheck (`npx tsc --noEmit`) or compilation (`go build`) if tests are missing, preventing `cm fix` from deadlocking and rolling back.
+  5. Context-aware patch synthesis with secure defaults (`cm fix <id> -c "..."`).
+  6. Stage clean code (`cm vcs stage`) and export summary.
+
+### 2. Scenario B: Legacy Enterprise Repo Audit & Zero-Regression Fix (既有系統深度審計與零回歸修復)
+* **When**: Auditing established enterprise repositories with extensive test suites, or ingesting external SAST reports.
+* **The Problem**: Traditional SAST tools (Semgrep, Snyk, SonarQube) generate 80% false positives (Alert Fatigue), and engineers fear security patches might break existing business logic or wipe uncommitted changes.
+* **User Prompt**: *"對我們的既有後端服務做安全審查，優先驗證哪些是真實漏洞，修復時絕不能讓現有測試壞掉。"* or *"這是資安團隊給的 `semgrep.sarif` 報告，幫我驗證哪些是假警報並把真的修掉。"*
+* **Grounded Defense**:
+  1. Incremental scan (`cm find . --diff-only`) or SAST ingestion (`cm report import -f semgrep.sarif`).
+  2. Grounded PoC sandbox execution (`cm verify`) to eliminate 80% false positives.
+  3. **Non-Destructive VCS Guardrail**: Checks `git status` and creates an automatic stash/backup before running `cm fix` or `cm vcs reset`, preventing accidental loss of uncommitted work.
+  4. Domain-guided patch generation respecting existing architecture (`cm fix -c "..."`).
+  5. **Double-Guarantee Closed Loop**: Automatically compiles and executes `build.command` (`npm test` / `pytest`) AND re-runs the PoC exploit (Re-Attack) to confirm the vulnerability is eliminated.
+  6. **Atomic Remediation Loop**: Fixes vulnerabilities one-by-one with dedicated commits to prevent AST drift.
+  7. Export standard OASIS SARIF 2.1.0 report for CI/CD and GitHub Code Scanning.
+
+---
+
+## 🛡️ Stateless On-the-Fly Scoping (Workspace Scoping)
+
+In multi-project agent environments, running `cm` against global `~/.codemender/` can cause configuration collisions, prompt blocking (`Overwrite? [y/N]`), and test command conflicts.
+
+This plugin enforces the **Stateless On-the-Fly Pattern**:
+
+```bash
+REAL_HOME="${HOME}"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+
+# Invoked per-command without mutating the persistent parent shell environment:
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm <command> [args...]
 ```
-                     ┌──────────────────────────────┐
-                     │ Phase 0: Rapid State Probing │
-                     │   (Zero-Token CWD Probe)     │
-                     └──────────────┬───────────────┘
-                                    │
-       ┌────────────────────────────┼────────────────────────────┐
-       ▼                            ▼                            ▼
-[Condition A: Clean Workspace] [Condition B: Dirty Working Tree] [Condition C: Interrupted Task]
-Run Initial Full Scan         Run Incremental Reconcile     Resume Active Session
-(cm find . -y)                (cm find --diff-only -y)      (cm session resume <id>)
-       │                            │                            │
-       └────────────────────────────┼────────────────────────────┘
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │ Phase 1: Contextual Triage   │
-                     │  (Read .exploit/ or Verify)  │
-                     └──────────────┬───────────────┘
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │ Phase 2: Patch & Test Loop   │
-                     │  cm fix ➔ npm test ➔ Status  │
-                     └──────────────┬───────────────┘
-                                    ▼
-                     ┌──────────────────────────────┐
-                     │ Phase 3: Session Retention   │
-                     │ (Preserve state / Clean only │
-                     │   when explicitly asked)     │
-                     └──────────────────────────────┘
-```
 
-1. **State-Aware Entry Probing (`cm report` & `git status`)**: Rapidly evaluates workspace status to avoid redundant full scans, leveraging cached AST states and incremental analysis.
-2. **AST & Taint Discovery (`cm find`)**: Headless full-codebase AST and data-flow taint analysis powered by `gemini-3.7-flash` with automated severity prioritization.
-3. **Autonomous Exploit Verification (`cm verify`)**: Synthesizes and executes dynamic PoC exploit payloads under `.exploit/` (e.g., `poc.js`, `exploit.py`, `REPORT.md`) inside process-level isolation to eliminate false positives.
-4. **Patch Synthesis & Regression Testing (`cm fix`)**: Synthesizes language-aware patches and automatically executes configured test suites (`npm test`, `pytest`, `cargo test`) to ensure zero behavioral regression.
-5. **Enterprise SARIF & HTML Reporting (`cm report`)**: Exports standard OASIS SARIF v2.1.0 reports for GitHub Advanced Security / CI/CD pipelines, or interactive standalone HTML audit dashboards.
+* **Outcome**: Every project maintains its own isolated `${PROJECT_ROOT}/.codemender/` state database and configuration, without mutating the developer's shell environment or losing Google Cloud ADC authentication.
 
 ---
 
 ## 📂 Repository Structure
 
-```
-.
-├── SKILL.md                          # Primary agent skill definition and rules of engagement
-├── README.md                         # Repository documentation, disclaimers, and setup guide
-├── LICENSE                           # Apache 2.0 open-source license
-├── .gitignore                        # Ignore rules for OS, cache, and temporary exploit files
-├── references/                       # Deep reference documentation
-│   ├── cli_reference.md              # Advanced command catalog, sandboxing, and session matrix
-│   ├── config_schema.md              # Complete schema reference for .codemender/config.yaml
-│   └── vibe_coding_pitfalls.md       # Top GenAI & Vibe Coding security vulnerability patterns
-└── scripts/
-    └── install_cm.sh                 # Cross-platform automated installer for the cm CLI binary
+```text
+codemender-security/
+├── plugin.json                     # agent-plugins.org v1.0.0 specification
+├── gemini-extension.json           # Gemini CLI & Google Antigravity manifest
+├── CLAUDE.md                       # Anthropic Claude Code operational guidelines
+├── .claude-plugin/
+│   └── plugin.json                 # Anthropic Claude Code plugin manifest
+├── .codex-plugin/
+│   └── plugin.json                 # OpenAI Codex plugin manifest
+├── rules/
+│   └── codemender-safety.md        # Cross-agent guardrails (Non-destructive VCS, Test degradation, Sandbox)
+├── SKILL.md                        # Master Skill (Self-contained for Google Antigravity & Gemini CLI)
+├── skills/
+│   ├── codemender-audit/           # Modular Skill 1: Discovery, diff scan, SAST import, and PoC verification
+│   │   ├── SKILL.md
+│   │   └── references/
+│   │       ├── cli_reference.md    # CLI commands, sandboxing, and session matrix
+│   │       └── finding_format.md   # .exploit/ artifact breakdown (info.yaml, REPORT.md, poc.js)
+│   └── codemender-remediate/       # Modular Skill 2: Context-aware fix, regression tests, Re-Attack, and VCS
+│       ├── SKILL.md
+│       └── references/
+│           ├── config_schema.md    # .codemender/config.yaml parameters
+│           └── vibe_coding_pitfalls.md # Top GenAI & Vibe Coding security vulnerability patterns
+├── scripts/
+│   └── install_cm.sh               # Official cross-platform installer (gcloud & curl)
+└── README.md                       # Comprehensive documentation and developer guides
 ```
 
 ---
 
-## 🚀 Installation & Setup
+## 🚀 Installation
 
-### Option 1: Install via Antigravity Prompt (Recommended)
-
-You can ask Antigravity directly inside your IDE or `agy` CLI session:
-
-> *"Install the CodeMender security skill from `https://github.com/edwardc-gcp/codemender-security`"*
-
-Antigravity will automatically clone the repository into your global skills directory (`~/.gemini/config/skills/codemender-security`) and index the skill immediately.
-
----
-
-### Option 2: Install via Command Line
-
-#### Global Installation (Available across all workspaces)
+### 1. In Google Antigravity
+Clone to your global skills directory:
 ```bash
 git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/skills/codemender-security
 ```
 
-#### Workspace / Project-Specific Installation
+### 2. In Anthropic Claude Code
 ```bash
-# Clone directly into project customization directory
-git clone https://github.com/edwardc-gcp/codemender-security.git .agents/skills/codemender-security
-
-# Or add as a Git Submodule for team collaboration
-git submodule add https://github.com/edwardc-gcp/codemender-security.git .agents/skills/codemender-security
+claude plugin add https://github.com/edwardc-gcp/codemender-security.git
 ```
 
----
+### 3. In OpenAI Codex
+Place the repository in your configured Codex plugin path or reference it in your workspace `.codex-plugin/`.
 
-### 2. Prerequisites & CLI Installation
-
-1. **Google Cloud Authentication**: Ensure your environment has Application Default Credentials (ADC) configured and the Vertex AI API enabled:
+### 4. Prerequisites
+1. **Google Cloud ADC**: Authenticate with Application Default Credentials:
    ```bash
    gcloud auth application-default login
-   gcloud services enable aiplatform.googleapis.com
    ```
-
-2. **Install the CodeMender CLI (`cm`)**:
-   > [!IMPORTANT]
-   > Downloading the binary requires project allowlisting on the Google Cloud Artifact Registry repository.
-
+2. **CodeMender CLI (`cm`)**: Install via the bundled script:
    ```bash
    bash scripts/install_cm.sh
-   export PATH="$HOME/bin:$PATH"
-   ```
-
-3. **Verify Environment Setup**:
-   ```bash
-   cm --version
-   gcloud auth application-default print-access-token >/dev/null && echo "GCP ADC: OK"
    ```
 
 ---
 
-## 🛠️ Usage Cheat Sheet
-
-| Operation | Command | Description |
-| :--- | :--- | :--- |
-| **Full Codebase Scan** | `cm find . -y --unrestricted --model gemini-3.7-flash` | Scans entire repository for AST/taint vulnerabilities (Gemini 3.7 Flash default). |
-| **Scan PR / Diff Only** | `cm find . -y --diff-only --unrestricted` | Analyzes only modified files or uncommitted Git diffs (Incremental reconciliation). |
-| **Severity Filter** | `cm find . -y --severity CRITICAL,HIGH --unrestricted` | Filters discovery to high-impact findings only. |
-| **Live Token Counter** | `cm find . -y --compact --unrestricted` | Displays rolling token counter (`Tokens: 40k in / 12k out / 60k total`). |
-| **Verify Finding (PoC)** | `cm verify <finding-id> --unrestricted --bypass-warning -y` | Generates and executes live exploit PoC under `.exploit/`. |
-| **Guided Remediation** | `cm fix <finding-id> -c "<guidance>" --unrestricted -y` | Generates patch guided by context (e.g., `-c "Use Secret Manager"`). |
-| **Inspect Patch Diff** | `cm vcs diff` | Displays unified diff synthesized by the remediation agent. |
-| **Rollback Patch** | `cm vcs revert` | Reverts patch changes if test validation fails. |
-| **Export SARIF for CI/CD** | `cm report -f sarif > results.sarif` | Outputs OASIS SARIF v2.1.0 for GitHub Code Scanning / CI. |
-| **Interactive HTML Report**| `cm report -f html > report.html` | Generates self-contained HTML vulnerability dashboard. |
-| **Update CodeMender CLI** | `cm update` | Checks for updates and performs atomic CLI upgrade. |
-| **View Token Statistics** | `cm stats` | Summarizes token usage (input, output, cached, thought, tool-use). |
-
----
-
-## ⚙️ Workspace Configuration (`.codemender/config.yaml`)
-
-CodeMender can be customized on a per-project basis via `.codemender/config.yaml`:
-
-```yaml
-version: 1
-team_id: "secops-team"
-model: "gemini-3.7-flash"
-
-scan:
-  extensions:
-    include: [".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".rs"]
-    exclude: ["node_modules", "vendor", ".git", "dist", "build", "bin", "*.min.js"]
-  max_file_size_kb: 500
-  incremental: true
-
-build:
-  # Executed automatically by `cm fix` to verify zero regressions before applying patches
-  command: "npm test" # Alternatives: "pytest", "go test ./...", "cargo test", "make build && make test"
-
-sandbox:
-  enabled: true       # Runs local tool execution inside process-level sandbox
-  mounts:
-    target_dir: "."
-  network:
-    profile: "permissive-closed"  # Options: "permissive-closed" (isolated) | "permissive-open"
-
-security:
-  protected_files:
-    - "~/.ssh/*"
-    - "~/.gnupg/*"
-
-project_paths: []
-
-tools:
-  human_confirmation: true
-  confirm_commands: false
-  confirm_writes: false
-
-vcs:
-  type: "git"
-```
-
-For full details on configuration options, see the [Configuration Schema Reference](references/config_schema.md).
-
----
-
-## 📚 Deep Dive References
-
-- [CLI Advanced Reference & Troubleshooting](references/cli_reference.md): Detailed parameter specifications, OS sandboxing architecture, session resume lifecycle, and error matrix.
-- [Configuration Schema](references/config_schema.md): Complete specification for `.codemender/config.yaml`.
-- [GenAI & Vibe Coding Pitfalls](references/vibe_coding_pitfalls.md): Top 5 vulnerability patterns in LLM-generated code and remediation strategies.
-
----
-
-## 🛡️ License
-
-Distributed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
-
+## 📄 License
+Licensed under the [Apache License, Version 2.0](LICENSE).
