@@ -2,8 +2,17 @@
 .DS_Store
 Thumbs.db
 
-# Temporary & Cache files
+# Temporary, Logs & CodeMender Workspace State
 *.tmp
 *.log
 .exploit/
-.codemender/state.db
+.codemender/
+
+# Build & Package Manager Caches (prevent leakage from on-the-fly HOME)
+.cache/
+.npm/
+.cargo/
+
+# Security Reports
+*.sarif
+report.html
