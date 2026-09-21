@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codemender-security",
+  "version": "1.0.0",
+  "description": "Enterprise autonomous security auditing, zero-false-positive PoC verification, and context-aware patch remediation using Google Cloud CodeMender (cm) on Gemini Enterprise Agent Platform.",
+  "author": {
+    "name": "Google LLC",
+    "url": "https://cloud.google.com"
+  },
+  "homepage": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/codemender",
+  "repository": "https://github.com/edwardc-gcp/codemender-security",
+  "license": "Apache-2.0",
+  "keywords": [
+    "security",
+    "codemender",
+    "google-cloud",
+    "vulnerability-audit",
+    "patch-remediation",
+    "poc-verification",
+    "gemini"
+  ]
+}

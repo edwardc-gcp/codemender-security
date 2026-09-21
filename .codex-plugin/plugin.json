@@ -1,0 +1,11 @@
+{
+  "name": "codemender-security",
+  "version": "1.0.0",
+  "description": "Enterprise autonomous security auditing, zero-false-positive PoC verification, and context-aware patch remediation using Google Cloud CodeMender (cm) on Gemini Enterprise Agent Platform.",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "CodeMender Security",
+    "shortDescription": "Zero-false-positive vulnerability audit and patch remediation via CodeMender",
+    "category": "Security"
+  }
+}
