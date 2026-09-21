@@ -54,7 +54,7 @@ run_cm() {
 3. **Workspace Init**:
    ```bash
    if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
-     HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init -y
+     HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init
    fi
    ```
 
@@ -103,7 +103,7 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <f
 ### What Happens in the Sandbox:
 1. Synthesizes an exploit script under `${PROJECT_ROOT}/.exploit/<finding-id>/` (`poc.js`, `exploit.py`, or `exploit.sh`).
 2. Executes the payload inside the isolated process sandbox (`exebox`).
-3. If the exploit triggers the bug, it updates the finding status to `VERIFIED` and produces `${PROJECT_ROOT}/.exploit/<id>/REPORT.md`.
+3. If the exploit triggers the bug, it confirms exploitability (recording verification in `.codemender/state.db`) and produces reproduction artifacts under `${PROJECT_ROOT}/.exploit/<id>/` (`REPORT.md`, `poc.js`).
 4. If the exploit fails to reproduce, the finding status remains `OPEN / UNCONFIRMED` for manual security inspection. **Never dismiss an unverified exploit as a "False Positive" automatically**, as local environment or offline servers may prevent reproduction.
 
 > [!NOTE]
@@ -170,8 +170,8 @@ HOME="${PROJECT_ROOT}" cm vcs reset
 ### Atomic Multi-Vulnerability Remediation Loop:
 To fix multiple findings without AST drift or patch collisions:
 ```bash
-# 1. Fetch confirmed findings
-FINDINGS=$(HOME="${PROJECT_ROOT}" cm report -f json | jq -r '.findings[] | select(.status == "VERIFIED") | .id')
+# 1. Fetch confirmed open findings (cm report returns bare JSON array of finding objects)
+FINDINGS=$(HOME="${PROJECT_ROOT}" cm report --status OPEN -f json 2>/dev/null | jq -r '.[]? | .finding_id')
 
 # 2. Iterate atomically: One fix -> Verify -> Commit -> Next
 for fid in $FINDINGS; do

@@ -47,3 +47,4 @@ HOME="${PROJECT_ROOT}" cm vcs reset
 3. **Atomic Remediation**: When fixing multiple findings, fix 1 finding at a time, verify diff with `git diff`, commit the clean patch, and run `cm find . -y` before moving to the next finding.
 4. **Sandboxing**: Never disable the sandbox (`--sandbox=false` or `--unrestricted`) without explicit operator approval.
 5. **Triage Integrity**: When a PoC exploit fails during `cm verify`, retain the finding as `OPEN / UNCONFIRMED` for manual review. Never prematurely dismiss unverified exploits as false positives.
+6. **Zero Data-Loss Init**: Never pass `-y` to `cm init`. Guard with `if [ ! -f ... ]` to prevent silent overwriting of `.codemender/config.yaml`.
