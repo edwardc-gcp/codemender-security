@@ -84,3 +84,17 @@ When multiple vulnerabilities are identified across a codebase:
 2. Do **NOT** pass `--unrestricted` or `--sandbox=false` unless explicitly approved by the human operator.
 3. For Web service vulnerabilities, ensure the local service is running or mock endpoints are responsive before executing `cm verify`.
 4. **Triage Integrity**: Never classify a failed PoC execution as a "False Positive". Dynamic exploits frequently fail due to offline servers or environment mismatch. Mark as `UNCONFIRMED / OPEN` for manual inspection.
+
+---
+
+## 6. Zero Data-Loss Config Initialization Rule (Never Pass `-y` to `cm init`)
+
+Passing `-y` to `cm init` unconditionally answers "Yes" to `Overwrite? [y/N]` when an existing `.codemender/config.yaml` is present, silently wiping customized settings (e.g., custom `build.command`, `team_id`, or `scan.exclude_dirs`) without backup.
+* **Rule**: NEVER pass `-y` to `cm init`.
+* **Guard Pattern**: Always check file existence before initializing:
+  ```bash
+  if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
+    HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init
+  fi
+  ```
+* When `.codemender/config.yaml` does not exist, `cm init` runs without interactive prompts, making `-y` completely redundant while eliminating a dangerous copy-paste hazard.
