@@ -42,7 +42,7 @@ fi
 
 # 3. Initialize workspace if not already initialized
 if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
-  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init -y
+  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init
 fi
 ```
 
@@ -97,7 +97,7 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <f
 1. The cloud reasoning engine synthesizes a customized exploit script (`poc.js`, `exploit.py`, or `exploit.sh`).
 2. The local daemon executes the exploit inside an isolated OS-level process sandbox (`exebox`). `--no-reset` ensures working directory changes are not wiped by CLI resets.
 3. If the exploit triggers unexpected behavior (e.g., unauthorized data leak, SQL error, path traversal):
-   - Status in `cm report` is updated to **`VERIFIED`**.
+   - Exploit validation succeeds, marking the finding as verified in the state database.
    - Root Cause Analysis and reproduction artifacts are saved in `${PROJECT_ROOT}/.exploit/<finding-id>/REPORT.md`.
 4. If the exploit fails to reproduce, the finding remains **`OPEN / UNCONFIRMED`** for manual security inspection.
    > [!WARNING]
@@ -121,9 +121,9 @@ Present findings in a structured Markdown table:
 
 | Finding ID | Severity | Status | CWE | Vulnerable Location | Verified PoC |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `f-1a2b3c` | CRITICAL | VERIFIED | CWE-89 (SQL Injection) | `src/auth/login.go:45` | `.exploit/f-1a2b3c/poc.js` |
-| `f-4d5e6f` | HIGH | VERIFIED | CWE-22 (Path Traversal) | `src/api/files.ts:88` | `.exploit/f-4d5e6f/exploit.py` |
-| `f-7g8h9i` | MEDIUM | OPEN | CWE-798 (Hardcoded Key) | `config/default.json:12` | Unverified |
+| `f-1a2b3c` | CRITICAL | OPEN (Verified) | CWE-89 (SQL Injection) | `src/auth/login.go:45` | `.exploit/f-1a2b3c/poc.js` |
+| `f-4d5e6f` | HIGH | OPEN (Verified) | CWE-22 (Path Traversal) | `src/api/files.ts:88` | `.exploit/f-4d5e6f/exploit.py` |
+| `f-7g8h9i` | MEDIUM | OPEN (Unverified) | CWE-798 (Hardcoded Key) | `config/default.json:12` | — |
 
 ### SARIF Export for CI/CD:
 If requested, generate standard SARIF 2.1.0 output:

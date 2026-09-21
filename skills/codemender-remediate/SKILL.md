@@ -113,8 +113,8 @@ HOME="${PROJECT_ROOT}" cm vcs reset
 When fixing multiple findings across a repository, avoid naive shell loops which suffer from AST node and line number drift. **Execute the Atomic Remediation Loop**:
 
 ```bash
-# 1. Query verified findings
-FINDINGS=$(HOME="${PROJECT_ROOT}" cm report -f json | jq -r '.findings[] | select(.status == "VERIFIED") | .id')
+# 1. Query verified open findings (cm report returns bare array; status is OPEN, not VERIFIED)
+FINDINGS=$(HOME="${PROJECT_ROOT}" cm report --status OPEN -f json 2>/dev/null | jq -r '.[]? | .finding_id')
 
 # 2. Iterate atomically: One fix -> Verify -> Commit -> Next
 for fid in $FINDINGS; do
