@@ -21,22 +21,22 @@ This plugin is engineered around the two most critical real-world development wo
 * **The Problem**: The app works, but contains typical GenAI pitfalls (hardcoded API keys, permissive `allow read, write: if true;`, open CORS, unsanitized SQL/prompt concatenation) and **lacks unit tests**.
 * **User Prompt**: *"剛剛用 AI 寫完這個全端專案，幫我做一次全面的安全盤點與加固，把所有低級資安漏洞修掉，我要準備上線了。"*
 * **Adaptive Defense**:
-  1. Automated project scoping & initialization (`cm init -y`).
-  2. Full AST and taint discovery (`cm find . -y --compact`).
-  3. Grounded PoC exploit generation in sandbox (`cm verify <id>`).
+  1. Automated project scoping & initialization (`cm init`).
+  2. Full AST and taint discovery (`cm find . -y`).
+  3. Grounded PoC exploit generation in sandbox (`cm verify <id> --no-reset -y`).
   4. **Test-Adaptive Degradation**: Automatically sets `build.command` to typecheck (`npx tsc --noEmit`) or compilation (`go build`) if tests are missing, preventing `cm fix` from deadlocking and rolling back.
-  5. Context-aware patch synthesis with secure defaults (`cm fix <id> -c "..."`).
-  6. Stage clean code (`cm vcs stage`) and export summary.
+  5. Context-aware patch synthesis with secure defaults (`cm fix <id> -c "..." -y`).
+  6. Stage clean code (`git diff`, `cm vcs stage`) and export summary.
 
 ### 2. Scenario B: Legacy Enterprise Repo Audit & Zero-Regression Fix (既有系統深度審計與零回歸修復)
 * **When**: Auditing established enterprise repositories with extensive test suites, or ingesting external SAST reports.
-* **The Problem**: Traditional SAST tools (Semgrep, Snyk, SonarQube) generate 80% false positives (Alert Fatigue), and engineers fear security patches might break existing business logic or wipe uncommitted changes.
+* **The Problem**: Traditional SAST tools (Semgrep, Snyk, SonarQube) generate alert fatigue, and engineers fear security patches might break existing business logic or wipe uncommitted changes.
 * **User Prompt**: *"對我們的既有後端服務做安全審查，優先驗證哪些是真實漏洞，修復時絕不能讓現有測試壞掉。"* or *"這是資安團隊給的 `semgrep.sarif` 報告，幫我驗證哪些是假警報並把真的修掉。"*
 * **Grounded Defense**:
-  1. Incremental scan (`cm find . --diff-only`) or SAST ingestion (`cm report import -f semgrep.sarif`).
-  2. Grounded PoC sandbox execution (`cm verify`) to eliminate 80% false positives.
+  1. Incremental scan (`cm find . -y` using `scan.incremental: true`) or SAST ingestion (`cm report import -f semgrep.sarif`).
+  2. Grounded PoC sandbox execution (`cm verify <id> --no-reset -y`) to verify exploitability.
   3. **Non-Destructive VCS Guardrail**: Checks `git status` and creates an automatic stash/backup before running `cm fix` or `cm vcs reset`, preventing accidental loss of uncommitted work.
-  4. Domain-guided patch generation respecting existing architecture (`cm fix -c "..."`).
+  4. Domain-guided patch generation respecting existing architecture (`cm fix -c "..." -y`).
   5. **Double-Guarantee Closed Loop**: Automatically compiles and executes `build.command` (`npm test` / `pytest`) AND re-runs the PoC exploit (Re-Attack) to confirm the vulnerability is eliminated.
   6. **Atomic Remediation Loop**: Fixes vulnerabilities one-by-one with dedicated commits to prevent AST drift.
   7. Export standard OASIS SARIF 2.1.0 report for CI/CD and GitHub Code Scanning.
