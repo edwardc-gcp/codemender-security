@@ -1,182 +1,114 @@
-# CodeMender Universal Security Plugin (`codemender-security`)
+# CodeMender Security Plugin (`codemender-security`)
 
-[![Plugin Standard: agent-plugins.org](https://img.shields.io/badge/Plugin_Standard-agent--plugins.org_v1.0-blue)](https://agent-plugins.org)
-[![Supported Agents: Antigravity | Claude Code | Codex | Gemini CLI](https://img.shields.io/badge/Agents-Antigravity_%7C_Claude_Code_%7C_Codex_%7C_Gemini_CLI-4285F4)](https://cloud.google.com)
-[![Platform: Google Cloud](https://img.shields.io/badge/Platform-Gemini_Enterprise_Agent_Platform-EA4335?logo=googlecloud)](https://cloud.google.com)
-[![Engine: CodeMender CLI (cm)](https://img.shields.io/badge/Engine-CodeMender_cm_0.8.0+-34A853)](https://docs.cloud.google.com/gemini-enterprise-agent-platform/codemender)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+The `codemender-security` plugin equips AI coding agents with autonomous security auditing, zero-false-positive exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`)** on the Gemini Enterprise Agent Platform.
 
-An enterprise autonomous AI Security Co-developer plugin for **Google Antigravity**, **Anthropic Claude Code**, **OpenAI Codex**, and **Gemini CLI**, powered natively by the **Google Cloud CodeMender (`cm`)** CLI on the Gemini Enterprise Agent Platform.
-
-This plugin equips AI coding assistants to autonomously discover AST and taint vulnerabilities, synthesize and execute live exploit Proof-of-Concepts (PoCs) in local OS-level process sandboxes, perform Root Cause Analysis (RCA), synthesize context-aware remediation patches validated against local unit tests with automated PoC re-attacks, and generate compliance reports in SARIF and HTML formats.
+Built on the open [Agent Plugins specification](https://agent-plugins.org/), this plugin bundles curated Agent Skills, safety guardrails, and operational runbooks for **Google Antigravity**, **Anthropic Claude Code**, **OpenAI Codex**, and **Gemini CLI**.
 
 ---
 
-## ⚡ Two Archetypal Developer Scenarios
+## 🚀 Installation
 
-This plugin is engineered around the two most critical real-world development workflows:
-
-### 1. Scenario A: Post-Vibe-Coding Hardening Pass
-* **When**: Right after building an MVP in an afternoon using AI tools (Cursor, Bolt, Lovable, Antigravity, Claude Code).
-* **The Problem**: The app works, but contains typical GenAI pitfalls (hardcoded API keys, permissive `allow read, write: if true;`, open CORS, unsanitized SQL/prompt concatenation) and **lacks unit tests**.
-* **User Prompt**: *"I just finished building this full-stack project with AI; do a comprehensive security audit and hardening pass, fix all low-hanging vulnerabilities before I go to production."*
-* **Adaptive Defense**:
-  1. Automated project scoping & initialization (`cm init`).
-  2. Full AST and taint discovery (`cm find . -y`).
-  3. Grounded PoC exploit generation in sandbox (`cm verify <id> --no-reset -y`).
-  4. **Test-Adaptive Degradation**: Automatically sets `build.command` to typecheck (`npx tsc --noEmit`) or compilation (`go build`) if tests are missing, preventing `cm fix` from deadlocking and rolling back.
-  5. Context-aware patch synthesis with secure defaults (`cm fix <id> -c "..." -y`).
-  6. Stage clean code (`git diff`, `cm vcs stage`) and export summary.
-
-### 2. Scenario B: Legacy Enterprise Repo Audit & Zero-Regression Fix
-* **When**: Auditing established enterprise repositories with extensive test suites, or ingesting external SAST reports.
-* **The Problem**: Traditional SAST tools (Semgrep, Snyk, SonarQube) generate alert fatigue, and engineers fear security patches might break existing business logic or wipe uncommitted changes.
-* **User Prompt**: *"Perform a security review of our existing backend service, prioritize verifying real exploitable vulnerabilities, and ensure existing test suites never break."* or *"Here is a `semgrep.sarif` report from our security team; verify which ones are false positives and remediate the real vulnerabilities."*
-* **Grounded Defense**:
-  1. Incremental scan (`cm find . -y` using `scan.incremental: true`) or SAST ingestion (`cm report import -f semgrep.sarif`).
-  2. Grounded PoC sandbox execution (`cm verify <id> --no-reset -y`) to verify exploitability.
-  3. **Non-Destructive VCS Guardrail**: Checks `git status` and creates an automatic stash/backup before running `cm fix` or `cm vcs reset`, preventing accidental loss of uncommitted work.
-  4. Domain-guided patch generation respecting existing architecture (`cm fix -c "..." -y`).
-  5. **Double-Guarantee Closed Loop**: Automatically compiles and executes `build.command` (`npm test` / `pytest`) AND re-runs the PoC exploit (Re-Attack) to confirm the vulnerability is eliminated.
-  6. **Atomic Remediation Loop**: Fixes vulnerabilities one-by-one with dedicated commits to prevent AST drift.
-  7. Export standard OASIS SARIF 2.1.0 report for CI/CD and GitHub Code Scanning.
-
----
-
-## 🛡️ Stateless On-the-Fly Scoping (Workspace Scoping)
-
-In multi-project agent environments, running `cm` against global `~/.codemender/` can cause configuration collisions, prompt blocking (`Overwrite? [y/N]`), and test command conflicts.
-
-This plugin enforces the **Stateless On-the-Fly Pattern**:
+### Antigravity
+Install the plugin directly via the Antigravity CLI or clone into your configuration:
 
 ```bash
-REAL_HOME="${HOME}"
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+# Via Antigravity CLI
+agy plugin install https://github.com/edwardc-gcp/codemender-security.git
 
-# Invoked per-command without mutating the persistent parent shell environment:
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm <command> [args...]
+# Or install manually to global plugins
+git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/plugins/codemender-security
 ```
 
-* **Outcome**: Every project maintains its own isolated `${PROJECT_ROOT}/.codemender/` state database and configuration, without mutating the developer's shell environment or losing Google Cloud ADC authentication.
+> [!TIP]
+> You can also install via the Antigravity IDE UI under **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL**.
 
----
-
-## 📂 Repository Structure
-
-```text
-codemender-security/
-├── plugin.json                     # agent-plugins.org v1.0.0 specification
-├── gemini-extension.json           # Gemini CLI & Google Antigravity manifest
-├── CLAUDE.md                       # Anthropic Claude Code operational guidelines
-├── .claude-plugin/
-│   └── plugin.json                 # Anthropic Claude Code plugin manifest
-├── .codex-plugin/
-│   └── plugin.json                 # OpenAI Codex plugin manifest
-├── rules/
-│   └── codemender-safety.md        # Cross-agent guardrails (Non-destructive VCS, Test degradation, Sandbox)
-├── SKILL.md                        # Master Skill (Self-contained for Google Antigravity & Gemini CLI)
-├── skills/
-│   ├── codemender-audit/           # Modular Skill 1: Discovery, diff scan, SAST import, and PoC verification
-│   │   ├── SKILL.md
-│   │   └── references/
-│   │       ├── cli_reference.md    # CLI commands, sandboxing, and session matrix
-│   │       └── finding_format.md   # .exploit/ artifact breakdown (info.yaml, REPORT.md, poc.js)
-│   └── codemender-remediate/       # Modular Skill 2: Context-aware fix, regression tests, Re-Attack, and VCS
-│       ├── SKILL.md
-│       └── references/
-│           ├── config_schema.md    # .codemender/config.yaml parameters
-│           └── vibe_coding_pitfalls.md # Top GenAI & Vibe Coding security vulnerability patterns
-├── scripts/
-│   └── install_cm.sh               # Official cross-platform installer (gcloud & curl)
-└── README.md                       # Comprehensive documentation and developer guides
-```
-
----
-
-## 🚀 Quick & Convenient Plugin Installation
-
-Because this repository implements the **Universal Agent Plugin Standard (`agent-plugins.org`)**, you can install it seamlessly across your preferred AI coding environments:
-
-### 1. In Google Antigravity
-Install as a global plugin (available across all projects on your machine) or as a workspace plugin (shared with your team via version control):
-
-* **Global Plugin (Recommended)**:
-  ```bash
-  git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/plugins/codemender-security
-  ```
-  *Antigravity automatically discovers the plugin manifest, loads `rules/codemender-safety.md`, and exposes both `codemender-audit` and `codemender-remediate` skills.*
-
-* **Workspace Plugin (Team-shared in repo)**:
-  ```bash
-  git clone https://github.com/edwardc-gcp/codemender-security.git .agents/plugins/codemender-security
-  # Or as a submodule:
-  git submodule add https://github.com/edwardc-gcp/codemender-security.git .agents/plugins/codemender-security
-  ```
-
-* **Via Antigravity IDE UI**:
-  Open **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL** → paste `https://github.com/edwardc-gcp/codemender-security.git`.
-
-### 2. In Anthropic Claude Code
+### Claude Code
 Install with a single command via the Claude Code plugin manager:
+
 ```bash
 claude plugin add https://github.com/edwardc-gcp/codemender-security.git
 ```
-*Claude Code detects `.claude-plugin/plugin.json` and loads operational guidelines from `CLAUDE.md`.*
 
-### 3. In Gemini CLI
+### Codex CLI
+Install to your Codex environment or project:
+
+```bash
+codex plugin add https://github.com/edwardc-gcp/codemender-security.git
+```
+
+### Gemini CLI
 Install as an official extension:
+
 ```bash
 gemini extensions install https://github.com/edwardc-gcp/codemender-security.git
-```
-*Gemini CLI recognizes `gemini-extension.json` and mounts the `codemender-security` capabilities.*
-
-### 4. In OpenAI Codex & Universal Runtimes
-Clone into your project's agent plugin directory:
-```bash
-git clone https://github.com/edwardc-gcp/codemender-security.git .codex/plugins/codemender-security
-```
-*Or install using the Universal Agent Plugin CLI:*
-```bash
-agent-plugin install https://github.com/edwardc-gcp/codemender-security.git
 ```
 
 ---
 
-## 🔑 Prerequisites & Engine Setup
+## 🔑 Prerequisites
 
-To enable the autonomous security agent to execute scans, verify exploits, and apply patches, two prerequisites are required:
+Before using the plugin, ensure your environment meets the following requirements:
 
 1. **Google Cloud Application Default Credentials (ADC)**:
    Authenticate your local development machine with Google Cloud:
    ```bash
    gcloud auth application-default login
    ```
-   *(Ensure your active Google Cloud project has access to the Gemini Enterprise Agent Platform or Vertex AI).*
+   *Ensure your active Google Cloud project has access to CodeMender on Gemini Enterprise Agent Platform.*
 
-2. **Google Cloud CodeMender CLI (`cm`)**:
-   Install the official `cm` binary using the bundled helper script:
+2. **CodeMender CLI (`cm`)**:
+   Install the official `cm` binary (version 0.8.0+) via the bundled script:
    ```bash
    bash scripts/install_cm.sh
    ```
-   *(Or verify installation with `cm --version`; requires `cm 0.8.0+`).*
+   *Verify installation with `cm --version`.*
 
 ---
 
-## 💬 Natural Language Prompting (Example Prompts)
+## 📦 What's Included
 
-Once installed, simply converse naturally with your AI coding agent in English or your preferred language. The agent will autonomously activate the appropriate workflow:
+### Bundled Skills
+- **[`codemender-audit`](./skills/codemender-audit)**:
+  Full-codebase AST and taint scanning, differential git scanning, external SAST report ingestion (`cm report import -f semgrep.sarif`), and autonomous dynamic PoC exploit verification inside local process sandboxes (`cm verify`).
+- **[`codemender-remediate`](./skills/codemender-remediate)**:
+  Domain-guided patch synthesis (`cm fix`), automated regression testing, exploit re-attack validation, and an atomic multi-vulnerability remediation loop that prevents AST drift.
 
-* **Post-Vibe-Coding Hardening**:
-  > *"I just finished building this full-stack project with AI; do a comprehensive security audit and hardening pass, run PoC verification in the sandbox, and remediate all real vulnerabilities while ensuring the build passes."*
+### Safety Rules & Guardrails
+- **[`codemender-safety.md`](./rules/codemender-safety.md)**:
+  Always-active safety guardrails that protect developer workspaces:
+  - **Zero Data-Loss VCS Guardrail**: Automatically stashes uncommitted code before running fixes or tests.
+  - **Vibe-Coding Adaptive Degradation**: Intelligently falls back from missing unit tests to syntax/type compilation checks (`tsc --noEmit`, `go build`), preventing rollback deadlocks on new AI-generated projects.
+  - **Zero Data-Loss Config Initialization**: Guarantees existing `.codemender/config.yaml` files are never overwritten.
+  - **Stateless Workspace Scoping**: Isolates local database and configuration per project under `${PROJECT_ROOT}/.codemender/` without mutating parent shell environments.
 
-* **Targeted Verification & Fix**:
-  > *"Triage this third-party SAST report with CodeMender, verify which candidates are false positives, and generate zero-regression patches for the real ones."*
+---
 
-* **Incremental Diff Audit**:
-  > *"Audit the changes on my current branch to make sure no new OWASP Top 10 vulnerabilities or auth regressions were introduced."*
+## 💡 How It Works
+
+Once installed, simply prompt your coding agent using natural language. The agent autonomously determines the best workflow and executes it safely under CodeMender guardrails.
+
+### Scenario 1: Post-Vibe-Coding Hardening Pass
+*You just generated a new MVP or feature with AI (Cursor, Bolt, Antigravity, Claude Code) and want to secure it before deployment:*
+
+> *"I just finished building this full-stack project with AI. Do a comprehensive security audit and hardening pass, verify real vulnerabilities in the sandbox, and remediate them before I deploy."*
+
+1. **Discovery & Scoping**: The agent initializes `.codemender/` and scans the codebase for high-risk vulnerabilities (hardcoded credentials, open CORS, SQL injection, unsanitized inputs).
+2. **Sandbox PoC Verification**: For each candidate finding, CodeMender synthesizes and executes a dynamic exploit inside an isolated sandbox to eliminate false positives.
+3. **Adaptive Remediation**: The agent synthesizes context-aware patches. If unit tests don't exist yet, it automatically configures typecheck/build validation to prevent patch rollback.
+4. **Closed-Loop Verification**: Re-runs the PoC exploit to prove the vulnerability is completely resolved.
+
+### Scenario 2: SAST Triage & Zero-Regression Fixes
+*You have an existing production codebase with existing test suites or an external SAST report:*
+
+> *"Triage this `semgrep.sarif` report with CodeMender, verify which candidates are true positives, and fix them without breaking our existing test suite."*
+
+1. **Pre-flight Safety**: The agent checks `git status` and creates an automatic stash to ensure in-progress work is never lost.
+2. **SAST Ingestion & PoC Validation**: Ingests external findings and runs sandboxed exploit tests. Candidate alerts that fail to reproduce are retained for manual review rather than blindly trusted or ignored.
+3. **Atomic Remediation**: Fixes confirmed vulnerabilities one by one, verifying diffs against local unit tests (`npm test` / `pytest`) and committing atomically to prevent AST drift.
+4. **Compliance Report**: Exports an OASIS SARIF 2.1.0 report ready for CI/CD integration.
 
 ---
 
 ## 📄 License
+
 Licensed under the [Apache License, Version 2.0](LICENSE).
