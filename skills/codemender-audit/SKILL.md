@@ -93,6 +93,18 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD
 HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f snyk.json
 ```
 
+### Workflow D: Surgical `.codemender/config.yaml` Tuning (Troubleshooting Coverage & Performance)
+CodeMender intentionally ships with a conservative default `config.yaml` to minimize scan latency and token usage. **Do NOT proactively dump all possible extensions into `config.yaml` upfront.** Instead, inspect and surgically tune `${PROJECT_ROOT}/.codemender/config.yaml` (see `references/config_schema.md`) when encountering specific symptoms:
+
+1. **Missed Vulnerabilities or `0 files scanned` (Coverage Gap)**:
+   * **Root Cause**: `scan.extensions.include` defaults strictly to `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Files with other suffixes or files exceeding `scan.max_file_size_kb: 500` are silently skipped.
+   * **Surgical Fix**: Check the target repository's primary source files (`git ls-files`) and append **only the specific suffixes needed for that project** (e.g., add `".tsx", ".jsx"` for Next.js/React, `".mjs"` for ES modules, `".rs"` for Rust, `".kt"` for Kotlin, `".swift"` for Swift, or `".cs"` for C#), then re-run `cm find`.
+2. **Slow Scan Performance or High Token Usage (Scope Bloat)**:
+   * **Root Cause**: `scan.exclude_dirs` defaults only to `["node_modules"]`. If the repo contains local virtual environments or build outputs, `cm find` will scan thousands of third-party `site-packages` or compiled bundles.
+   * **Surgical Fix**: Add present artifact/dependency directories (e.g., `".venv"`, `"venv"`, `".next"`, `"dist"`, `"build"`, `"vendor"`, `"target"`) to `scan.exclude_dirs`.
+3. **Traceability Principle for `tools.confirm_*`**:
+   * Leave `tools.confirm_commands: true` and `tools.confirm_writes: true` untouched in `.codemender/config.yaml`. Always pass `-y` / `--bypass-warning` explicitly on the CLI so automated actions remain visible and traceable in command logs.
+
 ---
 
 ## Phase 2: Scalable 2-Tier Verification (Eliminating False Positives Without Sandbox Deadlocks)

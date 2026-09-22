@@ -99,6 +99,12 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD
 HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f snyk.json
 ```
 
+### Workflow D: Surgical `.codemender/config.yaml` Tuning (Troubleshooting Coverage & Performance)
+CodeMender ships with a conservative default `config.yaml` to control scan latency and token usage. **Do NOT proactively add all possible file suffixes upfront.** Instead, surgically tune `.codemender/config.yaml` (see [Configuration Schema](references/config_schema.md)) when troubleshooting:
+* **Missed Findings / `0 files scanned` (Coverage Gap)**: `scan.extensions.include` only includes `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]` by default. If auditing a project whose source code uses other extensions (e.g., `.tsx`/`.jsx` in Next.js/React, `.mjs` in Node, `.rs` in Rust, `.kt` in Kotlin, `.swift` in iOS, or `.cs` in C#), append **only the specific extensions used by that project** to `scan.extensions.include` and check `scan.max_file_size_kb` (`500`).
+* **Slow Performance / Excessive Token Usage (Scope Bloat)**: `scan.exclude_dirs` defaults only to `["node_modules"]`. If the repository contains virtualenvs or compiled bundles (`.venv`, `venv`, `.next`, `dist`, `build`, `vendor`, `target`), append those directories to `scan.exclude_dirs`.
+* **CLI Traceability**: Do not flip `tools.confirm_commands` or `tools.confirm_writes` to `false` in `config.yaml`; keep passing `-y` / `--bypass-warning` on the CLI so non-interactive execution remains explicitly auditable in logs.
+
 ---
 
 ## Phase 2: Scalable 2-Tier Verification (Eliminating False Positives Without Sandbox Deadlocks)
