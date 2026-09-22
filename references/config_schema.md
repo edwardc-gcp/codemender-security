@@ -55,8 +55,9 @@ vcs:
   #   type: mercurial     # uses: hg revert --all --no-backup && hg purge
   #   type: custom
   #   commands:
-  #     reset: "./scripts/reset.sh"
-  #     diff: "diff -rq baseline/ current/"
+  #     reset: "git checkout HEAD -- ."
+  #     diff: "git diff"
+  #     status: "git status --porcelain"
   #     stage: "git add -A"
 
 build:
@@ -64,7 +65,8 @@ build:
   # Examples:
   #   Make:       "make build && make test"
   #   Go:         "go build ./... && go test ./..."
-  #   Custom:     "./scripts/verify.sh"
+  #   Python:     "python3 -m compileall -q ."
+  #   Outer-Only: "true" (when verifying build/tests in outer agent shell)
 ```
 
 ---
@@ -78,14 +80,19 @@ build:
 * `scan.incremental`: **(Default: `true`)** When enabled, CodeMender caches AST analysis in `.codemender/state.db` and performs incremental differential scans on modified files automatically.
 
 ### `tools`
-* `tools.confirm_commands`: Prompts `[y/N]` before executing commands in the sandbox (default: `true`). Overridden via `-y / --yes`.
-* `tools.confirm_writes`: Prompts `[y/N]` before modifying files on disk (default: `true`). Overridden via `-y / --yes`.
+* `tools.confirm_commands`: Prompts `[y/N]` before executing commands in the sandbox (default: `true`). Overridden via `--bypass-warning -y`.
+* `tools.confirm_writes`: Prompts `[y/N]` before modifying files on disk (default: `true`). Overridden via `--bypass-warning -y`.
 * `tools.cleanup_candidate_branches`: Deletes temporary git branches generated during fix trials (default: `true`).
 
 ### `vcs`
 * `vcs.type`: VCS provider. Defaults to `""` for automatic detection (`git` or `mercurial`).
-* **VCS Safety Note**: Notice that `type: git` uses `git checkout HEAD -- . && git clean -fd` for resets! This is why pre-fix stashing (`git stash push -m "cm-pre-fix-..."`) is mandatory to safeguard uncommitted manual work.
+* **VCS Safety Note**: Notice that `type: git` uses `git checkout HEAD -- . && git clean -fd` for resets!
+  1. Always register `.codemender/`, `.cm_project`, and `.exploit/` in `.git/info/exclude` so `git clean -fd` never deletes `.codemender/state.db` mid-session.
+  2. Always run `git stash push -u -m "cm-pre-fix-backup-$(date +%s)"` before `cm fix`, and **always restore the user's files (`git stash pop`) after committing the security patches**.
+  3. Optionally set `vcs.type: "custom"` with `vcs.commands.reset: "git checkout HEAD -- ."` to eliminate `git clean -fd` entirely.
 
 ### `build`
 * `build.command`: Verification command executed by `cm fix` inside the sandbox (`exebox`).
-* **Vibe-Coding Adaptation**: For newly generated projects with no test suite, adapt `build.command` to compile/syntax checks (e.g. `"npx tsc --noEmit"` or `"go build ./..."`) to avoid rollback deadlocks.
+* **Scalable Dynamic Build Probe & Outer-Shell Fallback**:
+  1. Probe the binary dynamically in the shell (`command -v pytest`, `command -v python3`, `command -v node`) and verify it exits `0` before writing `build.command`.
+  2. If no test suite exists (`npm test` returns 1) or `exebox` blocks external toolchain paths (`~/.nvm`, `/opt/homebrew`, `~/.pyenv`), set `build.command: "true"` in `.codemender/config.yaml` to avoid false patch rollbacks, and run the real build/syntax check in the outer agent shell before `git commit`.

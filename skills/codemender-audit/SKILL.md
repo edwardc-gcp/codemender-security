@@ -95,26 +95,33 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD
 
 ---
 
-## Phase 2: Grounded PoC Verification (Eliminating False Positives)
+## Phase 2: Scalable 2-Tier Verification (Eliminating False Positives Without Sandbox Deadlocks)
 
-Raw static analysis findings can contain false positives. For every Critical or High candidate finding, **execute an autonomous exploit verification test**:
+Raw static analysis findings can contain false positives. However, on macOS/Linux developer machines, `cm`'s internal `exebox` (`sandbox-exec`) blocks local TCP port binding (`localhost:<port>`) and blocks `process-exec*` on toolchains installed outside `/usr/bin` (such as `~/.nvm`, `/opt/homebrew`, `~/.pyenv`), causing dynamic verification loops to hang for 15–20 minutes.
 
+Use the **Scalable 2-Tier Verification Architecture**:
+
+### Tier 1 (Default — Fast Semantic & Taint Verification, 15–25s):
+Run `cm verify` with the native `--skip-exploit-verification` flag to execute deep cloud taint-flow, reachability, and sanitizer verification **without** spawning blocked sandbox sockets:
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 ```
 
-### What happens under the hood:
-1. The cloud reasoning engine synthesizes a customized exploit script (`poc.js`, `exploit.py`, or `exploit.sh`).
-2. The local daemon executes the exploit inside an isolated OS-level process sandbox (`exebox`). `--no-reset` ensures working directory changes are not wiped by CLI resets.
-3. If the exploit triggers unexpected behavior (e.g., unauthorized data leak, SQL error, path traversal):
-   - Exploit validation succeeds, marking the finding as verified in the state database.
-   - Root Cause Analysis and reproduction artifacts are saved in `${PROJECT_ROOT}/.exploit/<finding-id>/REPORT.md`.
-4. If the exploit fails to reproduce, the finding remains **`OPEN / UNCONFIRMED`** for manual security inspection.
-   > [!WARNING]
-   > Do **NOT** automatically dismiss unconfirmed findings as false positives. In dynamic exploits, failures frequently stem from offline dev servers, unseeded test databases, or missing mock sessions.
+### Tier 2 (Dynamic Exploit Execution — When Live PoC Execution is Required):
+* **System-Binary CLI / Library Targets**: Run in the default sandbox (`exebox`):
+  ```bash
+  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
+  ```
+* **Web Servers (`localhost` TCP ports) or Homebrew/NVM/pyenv Toolchains**: Because `exebox` blocks TCP sockets and non-`/usr/bin` binaries at the OS kernel level (and `-c` prompts cannot bypass kernel sandbox rules), first stash uncommitted files (`git stash push -u`) and run with `--unrestricted` (when approved/safe):
+  ```bash
+  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --unrestricted --no-reset --bypass-warning -y
+  ```
 
-> [!NOTE]
-> For Web vulnerabilities (e.g. CORS, SQLi on HTTP endpoints), ensure the local application server or mock service is listening if the exploit makes HTTP network probes.
+### Triage Integrity Rules:
+1. Check `cm report -f json` and `${PROJECT_ROOT}/.exploit/` (`PLAN.md`, `LOG.md`, `REPORT.md`).
+2. If dynamic exploit execution fails or times out, retain the finding as **`OPEN / UNCONFIRMED`** for manual security inspection.
+   > [!WARNING]
+   > Do **NOT** classify failed dynamic PoC executions as false positives. Only treat a finding as a False Positive when `cm verify` explicitly marks the status `DISMISSED` with concrete code-level proof.
 
 ---
 

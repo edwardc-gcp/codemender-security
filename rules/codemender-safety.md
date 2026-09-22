@@ -1,26 +1,19 @@
 ---
 trigger: always_on
-description: Safety-critical guardrails for Google Cloud CodeMender (cm) CLI operations, enforcing stateless workspace scoping, non-destructive VCS backups, sandboxed PoC execution, and atomic remediation.
 ---
 
-# CodeMender Security Guardrails & Workspace Safety Rules
+# CodeMender (`cm`) Security & Workspace Guardrails
 
-This rule defines safety-critical guardrails for AI Coding Agents (Antigravity, Claude Code, OpenAI Codex, Gemini CLI) when orchestrating the Google Cloud CodeMender (`cm`) CLI.
+Mandatory safety rules when orchestrating the Google Cloud CodeMender (`cm`) CLI.
 
----
-
-## 1. Stateless On-the-Fly Workspace Scoping (Mandatory)
-
-To prevent cross-project state collisions and eliminate interactive prompt blocking (`Overwrite? [y/N]`), always invoke `cm` on-the-fly with project-scoped environment variables.
-
-### The Stateless On-the-Fly Pattern
+## 1. Stateless On-the-Fly Workspace Scoping
+Never mutate parent shell `$HOME`. Always scope state to `${PROJECT_ROOT}` and protect `.codemender/` via `.git/info/exclude` from `cm fix`'s internal `git clean -fd`:
 ```bash
 REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
 GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 
-# Protect localized .codemender state from 'cm fix' internal 'git clean -fd' (supports worktrees & submodules)
 EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
 if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
   for entry in ".codemender/" ".cm_project" ".exploit/"; do
@@ -28,87 +21,34 @@ if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
   done
 fi
 
-# Stateless on-the-fly execution (never mutate the agent's long-lived parent shell)
 HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm <command> [args...]
 ```
 
-**Key Benefits:**
-1. Completely stateless: leaves the parent shell's `$HOME` untouched.
-2. Localizes `.codemender/config.yaml`, `.codemender/state.db`, and patch artifacts in `${PROJECT_ROOT}/.codemender/` while protecting them via `.git/info/exclude` from `git clean -fd`.
-3. Seamlessly shares user-authenticated Google Cloud Application Default Credentials (ADC) and active GCP Project ID (`GOOGLE_CLOUD_PROJECT`).
+## 2. Non-Destructive VCS Lifecycle (Pre-Stash & Post-Restore Mandate)
+`cm fix` runs `git checkout HEAD -- . && git clean -fd` on startup. Before ANY `cm fix`, `cm verify`, or `cm vcs reset`:
+1. **Pre-Fix Stash**: If `git status --porcelain | grep -vE '\.codemender|\.cm_project|\.exploit'` is non-empty, stash tracked & untracked (`-u`) files:
+   `git stash push -u -m "cm-pre-fix-backup-$(date +%s)"`
+2. **Non-Interactive Flags**: Always pass `--bypass-warning -y` to `cm fix` / `cm verify`, and `--no-reset` to `cm verify`.
+3. **Post-Fix Restoration (Mandatory)**: After all `cm fix` patches are committed to Git, **always restore the user's stashed work**:
+   `if git stash list | grep -q "cm-pre-fix-backup"; then git stash pop; fi`
 
----
+## 3. Scalable Build Validation (Avoiding Rollback Deadlock)
+`cm fix` runs `build.command` inside its `exebox` sandbox and rolls back patches if it exits non-zero (e.g., placeholder `npm test` exiting 1, or sandbox blocking NVM/Homebrew/pyenv paths).
+* **Probe First**: Before setting `build.command` in `.codemender/config.yaml`, dynamically probe the binary in shell (`command -v pytest`, `command -v python3`, `command -v tsc`) and confirm the command exits `0`.
+* **Outer-Shell Fallback**: If no unit test exists or `exebox` blocks host toolchain paths, set `build.command: "true"` in `.codemender/config.yaml` to prevent false rollbacks, and execute the real build/syntax check in the outer agent shell before `git commit`.
 
-## 2. Non-Destructive VCS Guardrail (Zero Data Loss Mandate)
+## 4. Atomic Remediation Loop
+Never batch-fix in a blind loop (`for id in ...`). Fix one finding at a time:
+1. `cm fix <id> -c "<guidance>" --bypass-warning -y`
+2. Verify build/syntax in outer shell and inspect `git diff`.
+3. Commit atomically: `git commit -am "security(cm): fix <cwe> in <file>"`
+4. Reconcile AST line numbers: `cm find . -y`
+5. After the loop completes, restore stashed user files (`git stash pop`).
 
-**CRITICAL**: Developers frequently run security audits on repositories containing uncommitted, in-progress code.
-A blind `cm vcs reset` or `cm fix` startup reset (which runs `git checkout HEAD -- . && git clean -fd`) could destroy hours of manual developer work.
+## 5. Sandbox & Triage Integrity
+* Keep `--sandbox=true` default unless `--unrestricted` is explicitly approved. For fast verification without `exebox` socket hangs, use `cm verify <id> --skip-exploit-verification --no-reset --bypass-warning -y`.
+* **Triage Integrity**: NEVER classify a failed dynamic PoC as a "False Positive" (exploits often fail due to sandbox socket/exec policies). Mark as `UNCONFIRMED / OPEN`.
 
-### Mandatory Pre-Fix Safety Check:
-Before executing ANY `cm fix`, `cm verify`, or `cm vcs reset`:
-1. Check working tree cleanliness:
-   ```bash
-   DIRTY=$(git status --porcelain 2>/dev/null | grep -vE '\.codemender|\.cm_project|\.exploit' | wc -l | tr -d ' ')
-   ```
-2. If `DIRTY > 0`:
-   - **Automatically stash tracked and untracked (`-u`) changes**:
-     ```bash
-     git stash push -u -m "cm-pre-fix-backup-$(date +%s)"
-     ```
-   - **Or create an isolated fix branch**:
-     ```bash
-     git checkout -b "cm-fix-$(date +%s)"
-     ```
-3. **Double Guardrail**: When running `cm verify` or `cm fix`, pass `--bypass-warning -y` to prevent interactive `[y/N]` prompt hangs, and pass `--no-reset` on `cm verify` to suppress internal CLI resets while keeping `git stash push -u` as the primary defense.
-4. **NEVER** run `cm vcs reset` when unstashed manual changes exist!
-
----
-
-## 3. Vibe-Coding Test Adaptive Degradation (Avoiding Rollback Deadlock)
-
-In newly generated or vibe-coded projects, `package.json` often contains a placeholder test command: `echo "Error: no test specified" && exit 1`.
-If `build.command` executes and returns exit code 1, `cm fix` will assume the patch broke the project and **automatically roll back the patch**, deadlocking the remediation.
-
-### Adaptive Fallback Strategy:
-Before running `cm fix`, verify that `build.command` is functional:
-* **Node.js / TypeScript**: If `npm test` fails with no test, set `build.command: "npx tsc --noEmit"`, `"node --check <entry>.js"`, or `"npm run build"`.
-* **Python**: If no pytest exists, set `build.command: "python -m compileall -q ."`
-* **Go**: Set `build.command: "go build ./..."`
-* **Rust**: Set `build.command: "cargo check"`
-* This guarantees syntax and type regression protection without crashing on missing unit tests.
-
----
-
-## 4. Atomic Remediation Loop (Preventing AST Drift)
-
-When multiple vulnerabilities are identified across a codebase:
-* **DO NOT** execute a naive shell loop (`for fid in ...; do cm fix; done`). Multiple fixes to the same file will cause AST node and line number drift, resulting in patch collision or corrupt code.
-* **Enforce the Atomic Loop**:
-  1. Pick the highest priority verified finding.
-  2. Run `HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm fix <id> -c "<guidance>" --bypass-warning -y`.
-  3. Validate `build.command` and verify diff on disk (`git diff`).
-  4. Create an atomic Git commit: `git commit -am "security(cm): fix <cwe> in <file>"`.
-  5. Run an incremental reconciliation scan (`HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y`) to update `.codemender/state.db` before fixing the next finding.
-
----
-
-## 5. Process-Level Sandboxing & Triage Integrity
-
-1. Always keep `--sandbox=true` enabled (the default).
-2. Do **NOT** pass `--unrestricted` or `--sandbox=false` unless explicitly approved by the human operator.
-3. For Web service vulnerabilities, ensure the local service is running or mock endpoints are responsive before executing `cm verify`.
-4. **Triage Integrity**: Never classify a failed PoC execution as a "False Positive". Dynamic exploits frequently fail due to offline servers or environment mismatch. Mark as `UNCONFIRMED / OPEN` for manual inspection.
-
----
-
-## 6. Zero Data-Loss Config Initialization Rule (Never Pass `-y` to `cm init`)
-
-Passing `-y` to `cm init` unconditionally answers "Yes" to `Overwrite? [y/N]` when an existing `.codemender/config.yaml` is present, silently wiping customized settings (e.g., custom `build.command`, `team_id`, or `scan.exclude_dirs`) without backup.
-* **Rule**: NEVER pass `-y` to `cm init`.
-* **Guard Pattern**: Always check file existence before initializing:
-  ```bash
-  if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
-    HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init
-  fi
-  ```
-* When `.codemender/config.yaml` does not exist, `cm init` runs without interactive prompts, making `-y` completely redundant while eliminating a dangerous copy-paste hazard.
+## 6. Zero Data-Loss `cm init`
+NEVER pass `-y` to `cm init` (it silently wipes `.codemender/config.yaml`). Always guard:
+`[ -f "${PROJECT_ROOT}/.codemender/config.yaml" ] || HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm init`

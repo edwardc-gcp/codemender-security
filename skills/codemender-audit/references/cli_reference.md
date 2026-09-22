@@ -7,9 +7,20 @@ To ensure clean isolation when running across multiple concurrent projects or ag
 ```bash
 REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+
+# Protect localized .codemender state from 'cm fix' internal 'git clean -fd' (supports worktrees & submodules)
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
+  for entry in ".codemender/" ".cm_project" ".exploit/"; do
+    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
+  done
+fi
 
 HOME="${PROJECT_ROOT}" \
-GOOGLE_APPLICATION_CREDENTIALS="${GOOGLE_APPLICATION_CREDENTIALS:-${REAL_HOME}/.config/gcloud/application_default_credentials.json}" \
+GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
+GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
 cm "$@"
 ```
 
@@ -30,20 +41,18 @@ cm "$@"
 
 ---
 
-## 3. Sandboxed Exploit Verification (`cm verify`)
+## 3. Verification Modes (`cm verify`)
 
 | Command | Purpose |
 | :--- | :--- |
-| `cm verify <finding-id> -y` | Synthesize and run an autonomous PoC exploit script inside the local OS-level sandbox (`exebox`). |
-| `cm verify <finding-id> --no-reset -y` | Run verification while suppressing workspace resets (`git checkout HEAD -- . && git clean -fd`). |
-| `cm verify <finding-id> --skip-exploit-verification` | Perform static verification only without running active exploit scripts. |
-| `cm verify <finding-id> -c "Server listens on port 8080" -y` | Provide runtime port or service context to the verification agent. |
+| `cm verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y` | **(Fast & Safe)** Deep LLM taint & reachability verification without running active exploit scripts or hitting `exebox` socket blocks. |
+| `cm verify <finding-id> --no-reset --bypass-warning -y` | Synthesize and run an autonomous PoC exploit script inside the local OS-level sandbox (`exebox`) while suppressing workspace resets. |
+| `cm verify <finding-id> --unrestricted --no-reset --bypass-warning -y` | **(Operator Opt-in Only)** Disable `exebox` filesystem/socket sandbox when local HTTP server binding or Homebrew/NVM binaries are required. |
 
 > [!IMPORTANT]
-> **Exploit Verification Triage**: If an exploit script fails (`EXPLOIT_FAILED`), do NOT classify the finding as a "False Positive". Dynamic exploits frequently fail due to offline local servers or environment dependencies. Findings should remain classified as `UNCONFIRMED / OPEN` until verified or intentionally dismissed by a security engineer (`DISMISSED`).
+> **Exploit Verification Triage**: If an exploit script fails or times out (`EXPLOIT_FAILED`), do NOT classify the finding as a "False Positive". Dynamic exploits frequently fail due to `exebox` blocking local TCP sockets or non-system binary paths. Findings must remain classified as `UNCONFIRMED / OPEN` unless explicitly marked `DISMISSED` with concrete sanitizer/unreachability proof.
 
-### Generated Verification Artifacts (in `${PROJECT_ROOT}/.exploit/<id>/`):
-* `info.yaml`: Finding metadata, severity, confidence score, CWE identifiers.
+### Generated Verification Artifacts (in `${PROJECT_ROOT}/.exploit/`):
 * `PLAN.md`: Reasoning steps and attack strategy formulated by the verification agent.
 * `LOG.md`: Execution trace, network calls, and sandbox telemetry.
 * `poc.js` / `exploit.py`: Executable proof-of-concept exploit script.
@@ -60,7 +69,7 @@ cm "$@"
 | `cm report import -f snyk.json` | Ingest findings from Snyk CLI export. |
 | `cm report import -f sonar.sarif` | Ingest findings from SonarQube / SonarCloud. |
 | `cm report -f table` | Print interactive terminal summary table from SQLite state database. |
-| `cm report -f md` | Export native Markdown vulnerability summary. |
+| `cm report -f json` | Output bare JSON array of findings (`finding_id`, `severity`, `status`, `patch_status`). |
 | `cm report -f sarif > results.sarif` | Export OASIS SARIF v2.1.0 report for GitHub Code Scanning / SCC. |
 | `cm report -f html > report.html` | Export self-contained HTML audit dashboard. |
 
@@ -70,9 +79,12 @@ cm "$@"
 
 | Command | Purpose |
 | :--- | :--- |
-| `cm fix <finding-id> -y` | Synthesize targeted patch, apply in isolated candidate branch, verify with `build.command`, and present diff. |
-| `cm fix <finding-id> -c "Preserve existing auth middleware" -y` | Provide constraint context to the remediation agent. |
-| `cm fix <finding-id> --no-cache -y` | Bypass cached patch candidates and generate a fresh fix session. |
+| `cm fix <finding-id> --bypass-warning -y` | Synthesize targeted patch, apply in isolated candidate branch, verify with `build.command`, and apply to working tree. |
+| `cm fix <finding-id> -c "Preserve existing auth middleware" --bypass-warning -y` | Provide constraint context to the remediation agent. |
+| `cm fix <finding-id> --no-cache --bypass-warning -y` | Bypass cached patch candidates and generate a fresh fix session. |
+
+> [!CAUTION]
+> Always stash uncommitted and untracked work (`git stash push -u -m "cm-pre-fix-backup-$(date +%s)"`) before `cm fix`, and restore it (`git stash pop`) after committing all patches!
 
 ---
 
