@@ -50,9 +50,12 @@ fi
 
 ## Phase 1: Vulnerability Discovery & Surgical `config.yaml` Tuning
 
-* **Full / Incremental Scan**:
+* **Full Scan (MVPs ≤50 files) or Targeted Module Scan (10–50 files per batch)**:
   ```bash
+  # Small MVP:
   HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
+  # Medium/Large Repo (target specific modules of 10-50 files):
+  HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/auth/ -y
   ```
 * **Report Ingestion (`Simple JSON` & `Basic SARIF` only)**:
   ```bash
@@ -60,7 +63,7 @@ fi
   ```
 * **Surgical `.codemender/config.yaml` Tuning**:
   Do NOT proactively dump all extensions into `config.yaml`. Only adjust `.codemender/config.yaml` when troubleshooting:
-  - **Missed files (`0 scanned`)**: Default `scan.extensions.include` only covers `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Append **only** the specific suffixes used by the target project (e.g., `".tsx", ".jsx"` for Next.js/React, `".rs"` for Rust, `".kt"` for Kotlin).
+  - **Missed files (`0 scanned`)**: Default `scan.extensions.include` only covers `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Append **only** the specific suffixes used by the target project (e.g., `".tsx", ".jsx"` for Next.js/React, `".rs"` for Rust, `".kt"` for Kotlin, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/configs).
   - **Slow scans / token bloat**: Add existing build/virtualenv directories (`".venv"`, `".next"`, `"dist"`, `"vendor"`, `"target"`) to `scan.exclude_dirs`.
   - **CLI Traceability**: Keep `tools.confirm_commands: true` and `confirm_writes: true` in `config.yaml`; pass `--bypass-warning -y` on the CLI.
 
@@ -74,8 +77,9 @@ fi
    ```
 2. **Tier 2 (Dynamic PoC Execution)**:
    * **Sandboxed CLI/Library**: `cm verify <finding-id> --no-reset --bypass-warning -y`
-   * **`--unrestricted` Hazard Warning**: `--unrestricted` disables **both** the filesystem sandbox AND the command policy denylist (`full system access`) while running LLM-generated exploit scripts (Prompt Injection $\rightarrow$ RCE risk on untrusted code). **Require explicit per-invocation human confirmation** and only use in isolated VMs/containers.
-3. **Triage Integrity**: Never classify failed dynamic PoCs as "False Positives"; keep as `OPEN / UNCONFIRMED` unless marked `DISMISSED` with concrete code proof.
+   * **Network-Dependent Builds (`sandbox.network.profile`)**: Prefer setting `sandbox.network.profile: "permissive-open"` and `security.protected_files: ["~/.ssh/*", "~/.aws/*"]` in `.codemender/config.yaml` before disabling the sandbox.
+   * **`--unrestricted` Hazard Warning**: `--unrestricted` disables **both** the filesystem sandbox AND the command policy denylist (`full system access`) while running LLM-generated exploit scripts (Prompt Injection $\rightarrow$ RCE risk on untrusted code). **Require explicit per-invocation human confirmation**, confirm code ownership/OSI license, and only use in isolated VMs/containers.
+3. **Triage Integrity**: Never classify failed dynamic PoCs as "False Positives"; keep as `OPEN` (Unconfirmed). Note that `DISMISSED` can also indicate low verification confidence, and `REOPENED` signals a regression after patching.
 
 ---
 

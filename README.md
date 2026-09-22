@@ -3,6 +3,8 @@
 > [!IMPORTANT]
 > **DISCLAIMER: This is not an official Google product.**
 > This repository is an unofficial, community-maintained Agent Plugin and Skill wrapper that orchestrates the Google Cloud CodeMender (`cm`) CLI.
+> - **Public Preview & Scope**: Google Cloud CodeMender is currently in **Public Preview** (contact your Google Cloud representative for access) and is intended for **testing and evaluation purposes only** (not for commercial production). Only scan and verify code that you own, are explicitly authorized to test, or that is licensed under an OSI-approved open-source license.
+> - **Non-Interactive Execution (Section 20(j))**: Because AI coding agents execute CLI tools in headless background subshells, this plugin passes `-y --bypass-warning` on the CLI to prevent stdin hangs. Under Google Cloud Preview Terms Section 20(j), disabling or bypassing interactive confirmation prompts is the operator's responsibility and should be performed in isolated workspaces, sandbox VMs, or evaluated environments.
 
 The `codemender-security` plugin equips AI coding agents with autonomous security auditing, zero-false-positive exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`)** on the Gemini Enterprise Agent Platform.
 
@@ -42,19 +44,32 @@ git clone https://github.com/edwardc-gcp/codemender-security.git ~/.claude/plugi
 
 Before using the plugin, ensure your environment meets the following requirements:
 
-1. **Google Cloud Application Default Credentials (ADC)**:
+1. **Google Cloud Project, APIs & IAM Role**:
+   Enable the required Google Cloud APIs and ensure your account has the **Vertex AI User** (`roles/aiplatform.user`) IAM role on an allowlisted Public Preview project:
+   ```bash
+   gcloud services enable aiplatform.googleapis.com cloudresourcemanager.googleapis.com
+   ```
+   *(Note: On your very first run in a newly provisioned project, the backend may return `Resource setup has just started. Please try again shortly.` Wait 1–2 minutes and retry.)*
+
+2. **Google Cloud Application Default Credentials (ADC)**:
    Authenticate your local development machine with Google Cloud:
    ```bash
    gcloud auth application-default login
    ```
    *Ensure your active Google Cloud project has access to CodeMender on Gemini Enterprise Agent Platform.*
 
-2. **CodeMender CLI (`cm`)**:
+3. **CodeMender CLI (`cm`) Installation & Updates**:
    Review and run the bundled installer script (requires `curl` and `unzip`; supports optional `CM_SHA256` checksum verification):
    ```bash
    bash scripts/install_cm.sh
    ```
-   *Verify installation with `cm --version`.*
+   *Verify installation with `cm --version`. Because `-y` skips automatic update checks during agent runs, periodically update the CLI manually via `cm update` (or `sudo cm update`).*
+
+4. **Privacy & Telemetry Opt-Out (Optional)**:
+   CodeMender follows a local-first architecture (only targeted code snippets are transmitted via the Interactions API). CLI telemetry (which excludes source code, findings, and identity) is enabled by default; to disable it, export:
+   ```bash
+   export CM_TELEMETRY_OPT_OUT=1
+   ```
 
 ---
 

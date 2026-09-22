@@ -66,16 +66,20 @@ fi
 
 ## Phase 1: Vulnerability Discovery Workflows
 
-### Workflow A: Vibe-Coding Full Scan (New Project Hardening)
-When a user asks to audit a newly created project or perform a comprehensive security pass:
+### Workflow A: Vibe-Coding Full Scan & Targeted Module Scan
+When a user asks to audit a newly created MVP (≤50 files) or perform a targeted module pass:
 
 ```bash
+# For small MVPs (<= 50 files):
 HOME="${PROJECT_ROOT}" \
 GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" \
 CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
 GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
 GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
 cm find . -y
+
+# For medium/large repositories, scan targeted modules (10-50 files at a time) per official performance guidance:
+HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/auth/ -y
 ```
 * CodeMender performs deep AST and taint analysis across all supported source files.
 * Identifies unauthenticated endpoints, hardcoded credentials, open CORS policies, and injection sinks.
@@ -109,7 +113,7 @@ CodeMender intentionally ships with a conservative default `config.yaml` to mini
 
 1. **Missed Vulnerabilities or `0 files scanned` (Coverage Gap)**:
    * **Root Cause**: `scan.extensions.include` defaults strictly to `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Files with other suffixes or files exceeding `scan.max_file_size_kb: 500` are silently skipped.
-   * **Surgical Fix**: Check the target repository's primary source files (`git ls-files`) and append **only the specific suffixes needed for that project** (e.g., add `".tsx", ".jsx"` for Next.js/React, `".mjs"` for ES modules, `".rs"` for Rust, `".kt"` for Kotlin, `".swift"` for Swift, or `".cs"` for C#), then re-run `cm find`.
+   * **Surgical Fix**: Check the target repository's primary source files (`git ls-files`) and append **only the specific suffixes needed for that project** (e.g., add `".tsx", ".jsx"` for Next.js/React, `".mjs"` for ES modules, `".rs"` for Rust, `".kt"` for Kotlin, `".swift"` for Swift, `".cs"` for C#, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/deployment configs), then re-run `cm find`.
 2. **Slow Scan Performance or High Token Usage (Scope Bloat)**:
    * **Root Cause**: `scan.exclude_dirs` defaults only to `["node_modules"]`. If the repo contains local virtual environments or build outputs, `cm find` will scan thousands of third-party `site-packages` or compiled bundles.
    * **Surgical Fix**: Add present artifact/dependency directories (e.g., `".venv"`, `"venv"`, `".next"`, `"dist"`, `"build"`, `"vendor"`, `"target"`) to `scan.exclude_dirs`.
@@ -135,10 +139,11 @@ HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONF
   ```bash
   HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
   ```
+* **Network-Dependent Builds/Tests (`sandbox.network.profile`)**: Before disabling the sandbox, prefer setting `sandbox.network.profile: "permissive-open"` and `security.protected_files: ["~/.ssh/*", "~/.aws/*"]` in `.codemender/config.yaml` (see `references/config_schema.md`) so local sockets work while filesystem protection remains active.
 * **`--unrestricted` Mode (CRITICAL RCE WARNING — Requires Explicit Per-Invocation Human Consent)**:
   > [!CAUTION]
   > `--unrestricted` disables **BOTH** the filesystem sandbox (`exebox`) **AND the command policy denylist (`allow agent full system access`)** while executing LLM-generated exploit scripts! Running `--unrestricted` against an untrusted repository exposes the host to **Prompt Injection $\rightarrow$ Arbitrary Remote Code Execution (RCE)**.
-  > * **Mandatory Rule**: NEVER pass `--unrestricted` unless (1) the user explicitly approves that specific invocation, (2) uncommitted work is stashed (`git stash push -u`), and (3) the code is trusted or running inside a disposable VM/container.
+  > * **Mandatory Rule**: NEVER pass `--unrestricted` unless (1) the target code is owned by the user or OSI-licensed, (2) the user explicitly approves that specific invocation, (3) uncommitted work is stashed (`git stash push -u`), and (4) `security.protected_files` is configured or execution is inside a disposable VM/container.
 
 ### Triage Integrity Rules:
 1. Check `cm report -f json` and `${PROJECT_ROOT}/.exploit/` (`PLAN.md`, `LOG.md`, `REPORT.md`).

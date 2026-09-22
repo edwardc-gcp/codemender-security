@@ -17,13 +17,15 @@ When `cm verify <finding-id>` executes, CodeMender writes investigation and expl
 
 ---
 
-## 1. Grounding Assessment & Triage Integrity (`VERIFIED` vs `UNCONFIRMED / OPEN`)
+## 1. Official 4-State Lifecycle & Triage Integrity (`OPEN`, `FIXED`, `DISMISSED`, `REOPENED`)
 
 Before reporting a vulnerability to the user:
-1. Check `cm report -f json` (or `.codemender/state.db` `findings` table, which tracks `verified: 0|1` and `status: "OPEN"|"FIXED"|"DISMISSED"|"REOPENED"`).
-2. Check if `.exploit/REPORT.md` or `.exploit/LOG.md` contains verifiable proof of exploit execution.
-3. **Triage Integrity Mandate**: If the dynamic exploit script failed to execute or timed out (for example, because the `exebox` sandbox blocked local TCP socket binding or external toolchain execution like `~/.nvm` / `/opt/homebrew`), **classify the finding as `UNCONFIRMED / OPEN` for manual review**.
-   * **NEVER** classify a failed dynamic PoC execution as a "False Positive". Only treat a finding as a False Positive when `cm verify` explicitly marks it `DISMISSED` with concrete code-level proof (e.g., parameterized query or unreachable dead code).
+1. **Official Finding States (`status`)**:
+   * **`OPEN`**: Detected (or imported) finding that is active (note: verified findings remain `OPEN` in `status` while `verified=1` is recorded in `.codemender/state.db`).
+   * **`FIXED`**: Patch synthesized, applied, passed `build.command`, and verified against PoC re-attack.
+   * **`DISMISSED`**: Marked by verification as a false positive, already mitigated, **or having insufficient confidence to confirm exploitability**. Because `DISMISSED` can also result from low verification confidence, still inspect the code context before assuming a dismissed high-severity sink is safe.
+   * **`REOPENED`**: A previously `FIXED` or `DISMISSED` vulnerability that reappeared in a subsequent `cm find` scan (critical regression signal — always alert the developer if `REOPENED` appears after patching!).
+2. **Triage Integrity Mandate**: If a dynamic exploit script fails to execute or times out (e.g., due to `exebox` blocking TCP sockets or external toolchains), **retain the finding as `OPEN` (Unconfirmed) for manual review** — NEVER classify a failed dynamic PoC execution as a "False Positive".
 
 ---
 
@@ -54,6 +56,25 @@ Before reporting a vulnerability to the user:
 * **`status` values**: `"OPEN"`, `"FIXED"`, `"DISMISSED"`, `"REOPENED"`.
 * **`vuln_id`**: Contains the CWE identifier (e.g., `"CWE-89"`).
 * **`start_line` / `end_line`**: 1-indexed line range of the vulnerable sink.
+
+---
+
+## 2b. Official `cm report import` Simple JSON Schema
+
+When importing findings from external scanners via `cm report import -f findings.json`, use the official Simple JSON array schema (basic SARIF 2.1.0 is also supported on a best-effort basis):
+
+```json
+[
+  {
+    "file_path": "src/auth/login.py",
+    "line": 42,
+    "title": "SQL Injection in login query",
+    "message": "User input from request.args is concatenated directly into SQL execution.",
+    "severity": "HIGH",
+    "vuln_type": "CWE-89"
+  }
+]
+```
 
 ---
 
