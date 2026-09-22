@@ -2,7 +2,7 @@
 
 ## 1. Stateless On-the-Fly Invocation Pattern
 
-To ensure clean isolation when running across multiple concurrent projects or agent workspaces on the same machine, all commands should be executed statelessly per invocation, avoiding wrapper scripts:
+To ensure clean isolation when running across multiple concurrent projects or agent workspaces on the same machine without losing host `git` or `gcloud` configurations, all commands should be executed statelessly per invocation:
 
 ```bash
 REAL_HOME="${HOME}"
@@ -19,6 +19,8 @@ if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
 fi
 
 HOME="${PROJECT_ROOT}" \
+GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" \
+CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
 GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
 GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
 cm "$@"
@@ -45,9 +47,9 @@ cm "$@"
 
 | Command | Purpose |
 | :--- | :--- |
-| `cm verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y` | **(Fast & Safe)** Deep LLM taint & reachability verification without running active exploit scripts or hitting `exebox` socket blocks. |
+| `cm verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y` | **(Tier 1 Default — Fast & Safe)** Deep LLM taint & reachability verification without running active exploit scripts or hitting `exebox` socket blocks. |
 | `cm verify <finding-id> --no-reset --bypass-warning -y` | Synthesize and run an autonomous PoC exploit script inside the local OS-level sandbox (`exebox`) while suppressing workspace resets. |
-| `cm verify <finding-id> --unrestricted --no-reset --bypass-warning -y` | **(Operator Opt-in Only)** Disable `exebox` filesystem/socket sandbox when local HTTP server binding or Homebrew/NVM binaries are required. |
+| `cm verify <finding-id> --unrestricted --no-reset --bypass-warning -y` | **(CRITICAL RCE HAZARD — Explicit Per-Invocation Human Consent Required)** Disables BOTH `exebox` filesystem sandboxing AND the command policy denylist (`full system access`). Only run in isolated VMs/containers on trusted code. |
 
 > [!IMPORTANT]
 > **Exploit Verification Triage**: If an exploit script fails or times out (`EXPLOIT_FAILED`), do NOT classify the finding as a "False Positive". Dynamic exploits frequently fail due to `exebox` blocking local TCP sockets or non-system binary paths. Findings must remain classified as `UNCONFIRMED / OPEN` unless explicitly marked `DISMISSED` with concrete sanitizer/unreachability proof.
@@ -65,9 +67,8 @@ cm "$@"
 
 | Command | Purpose |
 | :--- | :--- |
-| `cm report import -f semgrep.sarif` | Ingest findings from Semgrep for PoC verification and patch synthesis. |
-| `cm report import -f snyk.json` | Ingest findings from Snyk CLI export. |
-| `cm report import -f sonar.sarif` | Ingest findings from SonarQube / SonarCloud. |
+| `cm report import -f findings.sarif` | Ingest external findings from basic SARIF v2.1.0 files (e.g., Semgrep). |
+| `cm report import -f findings.json` | Ingest external findings from Simple JSON format (`cm report import` supports Simple JSON and basic SARIF). |
 | `cm report -f table` | Print interactive terminal summary table from SQLite state database. |
 | `cm report -f json` | Output bare JSON array of findings (`finding_id`, `severity`, `status`, `patch_status`). |
 | `cm report -f sarif > results.sarif` | Export OASIS SARIF v2.1.0 report for GitHub Code Scanning / SCC. |
@@ -84,7 +85,7 @@ cm "$@"
 | `cm fix <finding-id> --no-cache --bypass-warning -y` | Bypass cached patch candidates and generate a fresh fix session. |
 
 > [!CAUTION]
-> Always stash uncommitted and untracked work (`git stash push -u -m "cm-pre-fix-backup-$(date +%s)"`) before `cm fix`, and restore it (`git stash pop`) after committing all patches!
+> Always stash uncommitted and untracked work (`git stash push -u -m "cm-pre-fix-backup-$(date +%s)"`) before `cm fix`, stage ALL modified and newly created files (`git add -A && git commit -m ...`), and restore stashed work (`git stash pop`) with conflict checking after committing all patches!
 
 ---
 
