@@ -138,20 +138,22 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     for item in (data if isinstance(data, list) else []):
-        if item.get("status") not in ("FIXED", "DISMISSED") and item.get("patch_status") != "APPLIED":
+        if item.get("status") not in ("FIXED", "DISMISSED"):
             print(item.get("finding_id", ""))
 except Exception:
     pass
 ')
 
-# 2. Iterate atomically: One fix -> Enforced Outer Build Hard Gate -> git add -A & Commit -> Reconcile AST -> Next
-for fid in $FINDINGS; do
+# 2. Iterate atomically (using while read <<< for full bash & zsh compatibility):
+while IFS= read -r fid; do
   [ -z "$fid" ] && continue
   echo "--- Remediating Finding: $fid ---"
   HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm fix "$fid" --bypass-warning -y
 
   # Enforce Outer-Shell Build Hard Gate before committing
-  if ! eval "${OUTER_BUILD_CMD:-true}"; then
+  if [ -z "${OUTER_BUILD_CMD:-}" ]; then
+    echo "⚠️ Warning: OUTER_BUILD_CMD is unset — no outer build/syntax check ran for $fid."
+  elif ! eval "${OUTER_BUILD_CMD}"; then
     echo "❌ Outer build/syntax validation failed for $fid; reverting patch..."
     git checkout HEAD -- . && git clean -fd
     continue
@@ -165,7 +167,7 @@ for fid in $FINDINGS; do
 
   # Reconcile AST cache incrementally before next fix
   HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
-done
+done <<< "${FINDINGS}"
 
 # 3. Export final clean report
 HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report -f sarif > "${PROJECT_ROOT}/remediated-results.sarif"

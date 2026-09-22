@@ -55,9 +55,8 @@ vcs:
   #   type: mercurial     # uses: hg revert --all --no-backup && hg purge
   #   type: custom
   #   commands:
-  #     reset: "git checkout HEAD -- ."
-  #     diff: "git diff"
-  #     status: "git status --porcelain"
+  #     reset: "./scripts/reset.sh"
+  #     diff: "diff -rq baseline/ current/"
   #     stage: "git add -A"
 
 build:
@@ -65,8 +64,7 @@ build:
   # Examples:
   #   Make:       "make build && make test"
   #   Go:         "go build ./... && go test ./..."
-  #   Python:     "python3 -m compileall -q ."
-  #   Outer-Only: "true" (when verifying build/tests in outer agent shell)
+  #   Custom:     "./scripts/verify.sh"
 ```
 
 ---
