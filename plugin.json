@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "codemender-security",
   "version": "1.0.0",
-  "description": "Community plugin for autonomous security auditing, PoC verification, and context-aware patch remediation using Google Cloud CodeMender (cm). This is not an official Google product.",
+  "description": "Autonomous security auditing, PoC verification, and context-aware patch remediation using Google Cloud CodeMender (cm) on Gemini Enterprise Agent Platform.",
   "author": {
     "name": "Community / Unofficial (Edward Chuang)",
     "url": "https://github.com/edwardc-gcp/codemender-security"

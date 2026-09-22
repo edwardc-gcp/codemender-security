@@ -1,7 +1,5 @@
 # CLAUDE.md - CodeMender Security Plugin Guidelines
 
-> **Disclaimer**: This is not an official Google product. It is a community-maintained skill and plugin wrapper for the Google Cloud CodeMender (`cm`) CLI.
-
 This document provides operational instructions for Anthropic Claude Code when executing security audits and patch remediations using the CodeMender CLI (`cm`).
 
 ---

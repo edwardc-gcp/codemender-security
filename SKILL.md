@@ -5,8 +5,6 @@ description: Autonomous security auditing, vulnerability verification, exploit P
 
 # Google Cloud CodeMender (`cm`) Security Skill
 
-> **Disclaimer**: This is not an official Google product. It is a community-maintained skill and plugin wrapper for the Google Cloud CodeMender (`cm`) CLI.
-
 This skill orchestrates the **Google Cloud CodeMender (`cm`) CLI** (`v0.8.0+`) across two specialized sub-workflows:
 - **[`codemender-audit`](skills/codemender-audit/SKILL.md)**: AST discovery (`cm find`), surgical `config.yaml` tuning, and 2-Tier verification (`cm verify`).
 - **[`codemender-remediate`](skills/codemender-remediate/SKILL.md)**: Context-aware patch synthesis (`cm fix`), enforced outer-shell build gates, atomic commits (`git add -A`), and conflict-safe `git stash` restoration.
