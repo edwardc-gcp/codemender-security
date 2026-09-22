@@ -99,7 +99,7 @@ export PATH="${TARGET_DIR}:${PATH}"
 if command -v cm >/dev/null 2>&1; then
   echo "✅ Version: $(cm --version)"
   echo "ℹ️  Testing backend connectivity..."
-  cm init --verify || echo "⚠️  Connectivity verification note: ADC authentication may be required (run 'gcloud auth application-default login')."
+  HOME="${TMP_DIR}" cm init --verify || echo "⚠️  Connectivity verification note: ADC authentication may be required (run 'gcloud auth application-default login')."
 else
   echo "⚠️  Installed to ${TARGET_DIR}/${BIN_NAME}. Please ensure ${TARGET_DIR} is in your system PATH."
 fi

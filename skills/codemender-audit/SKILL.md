@@ -30,9 +30,10 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
 
 # 1. Verify cm binary
+PLUGIN_ROOT="${HOME}/.gemini/config/plugins/codemender-security"
 if ! command -v cm >/dev/null 2>&1; then
   echo "CodeMender CLI not found. Running installer..."
-  bash "${PROJECT_ROOT}/scripts/install_cm.sh"
+  bash "${PLUGIN_ROOT}/scripts/install_cm.sh"
 fi
 
 # 2. Verify Google Cloud Application Default Credentials (ADC)

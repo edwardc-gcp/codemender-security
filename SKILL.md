@@ -49,7 +49,7 @@ run_cm() {
 ```
 
 ### Pre-flight Checks:
-1. **Binary Check**: `command -v cm >/dev/null 2>&1 || bash scripts/install_cm.sh`
+1. **Binary Check**: `command -v cm >/dev/null 2>&1 || bash "${REAL_HOME}/.gemini/config/plugins/codemender-security/scripts/install_cm.sh"`
 2. **ADC Check**: `gcloud auth application-default print-access-token >/dev/null 2>&1 || echo "ADC_MISSING: Run gcloud auth application-default login"`
 3. **Workspace Init**:
    ```bash

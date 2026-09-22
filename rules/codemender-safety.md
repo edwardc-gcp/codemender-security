@@ -1,3 +1,8 @@
+---
+trigger: always_on
+description: Safety-critical guardrails for Google Cloud CodeMender (cm) CLI operations, enforcing stateless workspace scoping, non-destructive VCS backups, sandboxed PoC execution, and atomic remediation.
+---
+
 # CodeMender Security Guardrails & Workspace Safety Rules
 
 This rule defines safety-critical guardrails for AI Coding Agents (Antigravity, Claude Code, OpenAI Codex, Gemini CLI) when orchestrating the Google Cloud CodeMender (`cm`) CLI.
