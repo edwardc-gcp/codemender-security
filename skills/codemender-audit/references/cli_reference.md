@@ -70,7 +70,7 @@ cm "$@"
 | `cm report import -f findings.sarif` | Ingest external findings from basic SARIF v2.1.0 files (e.g., Semgrep). |
 | `cm report import -f findings.json` | Ingest external findings from Simple JSON format (`cm report import` supports Simple JSON and basic SARIF). |
 | `cm report -f table` | Print interactive terminal summary table from SQLite state database. |
-| `cm report -f json` | Output bare JSON array of findings (`finding_id`, `severity`, `status`, `patch_status`). |
+| `cm report -f json` | Output bare JSON array of findings (`finding_id`, `severity`, `status`, `vuln_id`, `start_line`, `end_line`). |
 | `cm report -f sarif > results.sarif` | Export OASIS SARIF v2.1.0 report for GitHub Code Scanning / SCC. |
 | `cm report -f html > report.html` | Export self-contained HTML audit dashboard. |
 

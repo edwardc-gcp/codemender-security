@@ -89,7 +89,8 @@ if [ -n "$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.c
   git stash push -u -m "${STASH_MSG}"
 fi
 
-# 2. Query actionable findings via python3 (supports OPEN, REOPENED, VERIFIED; no jq required)
+# 2. Query actionable findings via python3 (captures any status other than FIXED/DISMISSED, including verified OPEN and REOPENED items)
+command -v python3 >/dev/null 2>&1 || { echo "❌ Error: python3 is required to parse cm report JSON." >&2; exit 1; }
 FINDINGS=$(HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report -f json 2>/dev/null | python3 -c '
 import sys, json
 try:
@@ -97,8 +98,8 @@ try:
     for item in (data if isinstance(data, list) else []):
         if item.get("status") not in ("FIXED", "DISMISSED"):
             print(item.get("finding_id", ""))
-except Exception:
-    pass
+except Exception as e:
+    print(f"⚠️ Warning: failed to parse cm report JSON: {e}", file=sys.stderr)
 ')
 
 # 3. Iterate atomically (using while read <<< for full bash & zsh compatibility):
