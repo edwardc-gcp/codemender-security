@@ -12,23 +12,33 @@ This document provides operational instructions for Anthropic Claude Code when e
 Always invoke `cm` on-the-fly with project-scoped environment variables to avoid mutating the global environment:
 
 ```bash
-# Resolve roots
+# Resolve roots & active GCP project
+REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-ADC_PATH="${HOME}/.config/gcloud/application_default_credentials.json"
+ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+
+# Protect localized .codemender state from 'cm fix' internal 'git clean -fd' (supports worktrees & submodules)
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
+  for entry in ".codemender/" ".cm_project" ".exploit/"; do
+    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
+  done
+fi
 
 # Full scan
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
 
 # Incremental scan (automatically diffs AST cache in .codemender/state.db when scan.incremental: true)
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
 # Or target modified path:
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find ./src/services/ -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/services/ -y
 
 # Sandboxed dynamic PoC exploit verification with reset suppression
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <finding-id> --no-reset -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
 
 # Context-aware patch remediation
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm fix <finding-id> -c "<guidance>" -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm fix <finding-id> -c "<guidance>" --bypass-warning -y
 
 # Verify changes directly on disk
 git diff
@@ -42,8 +52,8 @@ HOME="${PROJECT_ROOT}" cm vcs reset
 
 ## Operational Guardrails
 
-1. **Non-Destructive VCS**: Before running `cm fix`, `cm verify`, or `cm vcs reset`, check `git status --porcelain`. If dirty, run `git stash push -m "cm-pre-fix-backup"` to protect uncommitted manual work.
-2. **Vibe Coding Test Adaptive Check**: If `build.command` (e.g. `npm test`) fails due to no tests in a new project, adapt `build.command` in `.codemender/config.yaml` to typecheck (`npx tsc --noEmit`) or compilation (`go build ./...`) to prevent `cm fix` from deadlock rollback.
+1. **Non-Destructive VCS**: Before running `cm fix`, `cm verify`, or `cm vcs reset`, check `git status --porcelain`. If dirty, run `git stash push -u -m "cm-pre-fix-backup"` to protect uncommitted manual work (including untracked files) and ensure `.codemender/` is in `.git/info/exclude`.
+2. **Vibe Coding Test Adaptive Check**: If `build.command` (e.g. `npm test`) fails due to no tests in a new project, adapt `build.command` in `.codemender/config.yaml` to typecheck (`npx tsc --noEmit`), syntax check (`node --check <entry>.js`), or compilation (`go build ./...`) to prevent `cm fix` from deadlock rollback.
 3. **Atomic Remediation**: When fixing multiple findings, fix 1 finding at a time, verify diff with `git diff`, commit the clean patch, and run `cm find . -y` before moving to the next finding.
 4. **Sandboxing**: Never disable the sandbox (`--sandbox=false` or `--unrestricted`) without explicit operator approval.
 5. **Triage Integrity**: When a PoC exploit fails during `cm verify`, retain the finding as `OPEN / UNCONFIRMED` for manual review. Never prematurely dismiss unverified exploits as false positives.

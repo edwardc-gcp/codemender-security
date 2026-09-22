@@ -18,39 +18,48 @@ To prevent cross-project state collisions and eliminate interactive prompt block
 REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+
+# Protect localized .codemender state from 'cm fix' internal 'git clean -fd' (supports worktrees & submodules)
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
+  for entry in ".codemender/" ".cm_project" ".exploit/"; do
+    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
+  done
+fi
 
 # Stateless on-the-fly execution (never mutate the agent's long-lived parent shell)
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm <command> [args...]
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm <command> [args...]
 ```
 
 **Key Benefits:**
 1. Completely stateless: leaves the parent shell's `$HOME` untouched.
-2. Localizes `.codemender/config.yaml`, `.codemender/state.db`, and patch artifacts in `${PROJECT_ROOT}/.codemender/`.
-3. Seamlessly shares user-authenticated Google Cloud Application Default Credentials (ADC).
+2. Localizes `.codemender/config.yaml`, `.codemender/state.db`, and patch artifacts in `${PROJECT_ROOT}/.codemender/` while protecting them via `.git/info/exclude` from `git clean -fd`.
+3. Seamlessly shares user-authenticated Google Cloud Application Default Credentials (ADC) and active GCP Project ID (`GOOGLE_CLOUD_PROJECT`).
 
 ---
 
 ## 2. Non-Destructive VCS Guardrail (Zero Data Loss Mandate)
 
 **CRITICAL**: Developers frequently run security audits on repositories containing uncommitted, in-progress code.
-A blind `cm vcs reset` (which runs `git checkout HEAD -- . && git clean -fd`) or unhandled exploit reset could destroy hours of manual developer work.
+A blind `cm vcs reset` or `cm fix` startup reset (which runs `git checkout HEAD -- . && git clean -fd`) could destroy hours of manual developer work.
 
 ### Mandatory Pre-Fix Safety Check:
 Before executing ANY `cm fix`, `cm verify`, or `cm vcs reset`:
 1. Check working tree cleanliness:
    ```bash
-   DIRTY=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+   DIRTY=$(git status --porcelain 2>/dev/null | grep -vE '\.codemender|\.cm_project|\.exploit' | wc -l | tr -d ' ')
    ```
 2. If `DIRTY > 0`:
-   - **Automatically stash changes**:
+   - **Automatically stash tracked and untracked (`-u`) changes**:
      ```bash
-     git stash push -m "cm-pre-fix-backup-$(date +%s)"
+     git stash push -u -m "cm-pre-fix-backup-$(date +%s)"
      ```
    - **Or create an isolated fix branch**:
      ```bash
      git checkout -b "cm-fix-$(date +%s)"
      ```
-3. **Double Guardrail**: When running `cm verify`, pass `--no-reset` to suppress internal CLI resets while keeping `git stash` as the primary defense.
+3. **Double Guardrail**: When running `cm verify` or `cm fix`, pass `--bypass-warning -y` to prevent interactive `[y/N]` prompt hangs, and pass `--no-reset` on `cm verify` to suppress internal CLI resets while keeping `git stash push -u` as the primary defense.
 4. **NEVER** run `cm vcs reset` when unstashed manual changes exist!
 
 ---
@@ -62,7 +71,7 @@ If `build.command` executes and returns exit code 1, `cm fix` will assume the pa
 
 ### Adaptive Fallback Strategy:
 Before running `cm fix`, verify that `build.command` is functional:
-* **Node.js / TypeScript**: If `npm test` fails with no test, set `build.command: "npx tsc --noEmit"` or `"npm run build"`.
+* **Node.js / TypeScript**: If `npm test` fails with no test, set `build.command: "npx tsc --noEmit"`, `"node --check <entry>.js"`, or `"npm run build"`.
 * **Python**: If no pytest exists, set `build.command: "python -m compileall -q ."`
 * **Go**: Set `build.command: "go build ./..."`
 * **Rust**: Set `build.command: "cargo check"`
@@ -76,10 +85,10 @@ When multiple vulnerabilities are identified across a codebase:
 * **DO NOT** execute a naive shell loop (`for fid in ...; do cm fix; done`). Multiple fixes to the same file will cause AST node and line number drift, resulting in patch collision or corrupt code.
 * **Enforce the Atomic Loop**:
   1. Pick the highest priority verified finding.
-  2. Run `HOME="${PROJECT_ROOT}" cm fix <id> -c "<guidance>" -y`.
+  2. Run `HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm fix <id> -c "<guidance>" --bypass-warning -y`.
   3. Validate `build.command` and verify diff on disk (`git diff`).
   4. Create an atomic Git commit: `git commit -am "security(cm): fix <cwe> in <file>"`.
-  5. Run an incremental reconciliation scan (`HOME="${PROJECT_ROOT}" cm find . -y`) to update `.codemender/state.db` before fixing the next finding.
+  5. Run an incremental reconciliation scan (`HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y`) to update `.codemender/state.db` before fixing the next finding.
 
 ---
 

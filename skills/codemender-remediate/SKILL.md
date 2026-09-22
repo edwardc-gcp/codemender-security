@@ -24,11 +24,20 @@ Before touching any code or running `cm fix`, protect the developer's uncommitte
 REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 
-DIRTY=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+# Protect localized .codemender state from 'cm fix' internal 'git clean -fd' (supports worktrees & submodules)
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
+  for entry in ".codemender/" ".cm_project" ".exploit/"; do
+    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
+  done
+fi
+
+DIRTY=$(git status --porcelain 2>/dev/null | grep -vE '\.codemender|\.cm_project|\.exploit' | wc -l | tr -d ' ')
 if [ "$DIRTY" -gt 0 ]; then
-  echo "Backing up uncommitted changes before remediation..."
-  git stash push -m "cm-pre-fix-backup-$(date +%s)"
+  echo "Backing up uncommitted changes (including untracked files) before remediation..."
+  git stash push -u -m "cm-pre-fix-backup-$(date +%s)"
 fi
 ```
 
@@ -36,7 +45,7 @@ fi
 Verify that `build.command` in `${PROJECT_ROOT}/.codemender/config.yaml` is functional:
 * **The No-Test Trap**: In new MVP projects, `package.json` often has `echo "Error: no test specified" && exit 1`. If left as `npm test`, `cm fix` will treat exit code 1 as a regression and **roll back the fix automatically**.
 * **Adaptive Fallback**:
-  - Node.js / TypeScript: If `npm test` errors, set `build.command: "npx tsc --noEmit"` or `"npm run build"`
+  - Node.js / TypeScript: If `npm test` errors, set `build.command: "npx tsc --noEmit"`, `"node --check <entry>.js"`, or `"npm run build"`
   - Python: If no test runner, set `build.command: "python -m compileall -q ."`
   - Go: Set `build.command: "go build ./..."`
   - Rust: Set `build.command: "cargo check"`
@@ -62,7 +71,7 @@ Verify that `build.command` in `${PROJECT_ROOT}/.codemender/config.yaml` is func
 Run the fix command using the stateless on-the-fly invocation:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm fix <finding-id> -c "<guidance>" -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm fix <finding-id> -c "<guidance>" --bypass-warning -y
 ```
 
 ### The 4-Step Validation Loop Performed by `cm`:

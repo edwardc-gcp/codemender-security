@@ -41,10 +41,19 @@ Before running commands, identify project paths and execute via the **Stateless 
 REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+
+# Protect localized .codemender state from 'cm fix' internal 'git clean -fd' (supports worktrees & submodules)
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
+  for entry in ".codemender/" ".cm_project" ".exploit/"; do
+    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
+  done
+fi
 
 # Helper invocation: always pass on-the-fly to isolate .codemender/
 run_cm() {
-  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm "$@"
+  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm "$@"
 }
 ```
 
@@ -54,7 +63,7 @@ run_cm() {
 3. **Workspace Init**:
    ```bash
    if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
-     HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init
+     HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm init
    fi
    ```
 
@@ -65,7 +74,7 @@ run_cm() {
 ### Workflow A: Vibe-Coding Full Scan (New Project Hardening)
 When auditing a freshly generated MVP or full codebase:
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
 ```
 * Analyzes AST and taint data flows using default `gemini-3.8-flash`. Identifies leaked API keys, open CORS, dynamic SQL queries, and permissive cloud rules.
 
@@ -73,10 +82,10 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
 When the user has modified files and wants a rapid safety check (5–15 seconds):
 ```bash
 # CodeMender automatically diffs against .codemender/state.db when scan.incremental is true (default)
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
 
 # Or target specifically modified paths:
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find ./src/services/ -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/services/ -y
 ```
 * Uses local AST caching to inspect only modified code slices.
 
@@ -84,10 +93,10 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find ./sr
 When ingesting findings from CI/CD tools:
 ```bash
 # Ingest Semgrep SARIF report
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report import -f semgrep.sarif
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f semgrep.sarif
 
 # Ingest Snyk JSON report
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report import -f snyk.json
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f snyk.json
 ```
 
 ---
@@ -97,7 +106,7 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report im
 Raw static analysis findings can contain false positives. For candidate findings, **run dynamic PoC verification**:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <finding-id> --no-reset -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
 ```
 
 ### What Happens in the Sandbox:
@@ -116,17 +125,17 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <f
 ### 1. Mandatory Non-Destructive VCS Safety Check
 Before generating fixes, protect the developer's uncommitted manual work:
 ```bash
-DIRTY=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+DIRTY=$(git status --porcelain 2>/dev/null | grep -vE '\.codemender|\.cm_project|\.exploit' | wc -l | tr -d ' ')
 if [ "$DIRTY" -gt 0 ]; then
-  echo "Backing up uncommitted changes..."
-  git stash push -m "cm-pre-fix-backup-$(date +%s)"
+  echo "Backing up uncommitted changes (including untracked files)..."
+  git stash push -u -m "cm-pre-fix-backup-$(date +%s)"
 fi
 ```
 
 ### 2. Vibe-Coding Test Adaptive Check
 Verify that `build.command` in `.codemender/config.yaml` is functional:
 * If `npm test` fails because no tests are written (`no test specified`), adapt `build.command`:
-  - Node/TS: `"npx tsc --noEmit"` or `"npm run build"`
+  - Node/TS: `"npx tsc --noEmit"`, `"node --check <entry>.js"`, or `"npm run build"`
   - Python: `"python -m compileall -q ."`
   - Go: `"go build ./..."`
   This prevents `cm fix` from deadlocking and rolling back valid patches!
@@ -139,7 +148,7 @@ Never execute blind fixes. Inspect project architecture and supply explicit doma
 
 ### 4. Execute Fix with Closed-Loop Validation
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm fix <finding-id> -c "<guidance>" -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm fix <finding-id> -c "<guidance>" --bypass-warning -y
 ```
 
 **The 4-Step Validation Loop Performed by `cm`:**

@@ -28,9 +28,10 @@ Before executing scans, ensure environment readiness and project isolation:
 REAL_HOME="${HOME}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 
 # 1. Verify cm binary
-PLUGIN_ROOT="${HOME}/.gemini/config/plugins/codemender-security"
+PLUGIN_ROOT="${REAL_HOME}/.gemini/config/plugins/codemender-security"
 if ! command -v cm >/dev/null 2>&1; then
   echo "CodeMender CLI not found. Running installer..."
   bash "${PLUGIN_ROOT}/scripts/install_cm.sh"
@@ -41,9 +42,17 @@ if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
   echo "ADC credentials missing. Please run: gcloud auth application-default login"
 fi
 
-# 3. Initialize workspace if not already initialized
+# 3. Protect localized .codemender state from internal 'git clean -fd' (supports worktrees & submodules)
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
+  for entry in ".codemender/" ".cm_project" ".exploit/"; do
+    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
+  done
+fi
+
+# 4. Initialize workspace if not already initialized
 if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
-  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm init
+  HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm init
 fi
 ```
 
@@ -55,7 +64,7 @@ fi
 When a user asks to audit a newly created project or perform a comprehensive security pass:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
 ```
 * CodeMender performs deep AST and taint analysis across all supported source files.
 * Identifies unauthenticated endpoints, hardcoded credentials, open CORS policies, and injection sinks.
@@ -65,10 +74,10 @@ When the user has modified files and wants a fast safety check:
 
 ```bash
 # Leverages .codemender/state.db when scan.incremental is true (default in config.yaml)
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find . -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
 
 # Or target specifically modified paths:
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm find ./src/auth/ -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/auth/ -y
 ```
 * Leverages local AST caching to scan **only modified code slices**.
 * Completes in 5–15 seconds with minimal token consumption.
@@ -78,10 +87,10 @@ When the user supplies a SAST report from existing CI/CD tools:
 
 ```bash
 # For Semgrep
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report import -f semgrep.sarif
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f semgrep.sarif
 
 # For Snyk
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report import -f snyk.json
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f snyk.json
 ```
 
 ---
@@ -91,7 +100,7 @@ HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm report im
 Raw static analysis findings can contain false positives. For every Critical or High candidate finding, **execute an autonomous exploit verification test**:
 
 ```bash
-HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" cm verify <finding-id> --no-reset -y
+HOME="${PROJECT_ROOT}" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
 ```
 
 ### What happens under the hood:
