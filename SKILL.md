@@ -61,10 +61,12 @@ fi
   ```bash
   HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f findings.sarif
   ```
-* **Surgical `.codemender/config.yaml` Tuning**:
-  Do NOT proactively dump all extensions into `config.yaml`. Only adjust `.codemender/config.yaml` when troubleshooting:
-  - **Missed files (`0 scanned`)**: Default `scan.extensions.include` only covers `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Append **only** the specific suffixes used by the target project (e.g., `".tsx", ".jsx"` for Next.js/React, `".rs"` for Rust, `".kt"` for Kotlin, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/configs).
-  - **Slow scans / token bloat**: Add existing build/virtualenv directories (`".venv"`, `".next"`, `"dist"`, `"vendor"`, `"target"`) to `scan.exclude_dirs`.
+* **Surgical `.codemender/config.yaml` & CLI Tuning (Default-First, Symptom-Driven)**:
+  Do NOT proactively dump all extensions or override `project_paths` / `run_command` on Turn 1. Only adjust when observing specific symptoms:
+  - **Missed files (`0 scanned`)**: Default `scan.extensions.include` only covers `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Append **only** the specific suffixes used by the target project (e.g., `".tsx", ".jsx"` for Next.js/React, `".rs"` for Rust, `".cs"` for C#, `".hpp"` for C++ headers, `".kt"` for Kotlin, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/configs).
+  - **Slow scans / token bloat**: Add existing build/virtualenv directories (`".venv"`, `".next"`, `"dist"`, `"vendor"`, `"target"`, `"bin"`, `"obj"`) to `scan.exclude_dirs`.
+  - **Subdirectory scan boundary (`project_paths`)**: Keep `project_paths` empty on Turn 1 (preserving least-privilege Monorepo isolation). If scanning a subdirectory (`cm find ./src`) causes `cm verify` / `cm fix` to miss root files (`Cargo.toml`, `composer.json`) or create `<subdir>/.git`, reactively set `project_paths: ["${PROJECT_ROOT}"]` and remove `<subdir>/.git`.
+  - **Sandbox compiler discovery loops (`find / -name cargo`, `which mono`)**: Keep Turn 1 `-c` focused on domain guidance so `cm` retains in-loop compiler self-correction. If `.codemender/logs/` stalls (>60s) searching for blocked sandbox toolchains, re-run with `-c "<guidance>. IMPORTANT: Do NOT call run_command in sandbox; apply fix via search_and_replace and rely on outer build gate"` + `--no-cache --bypass-warning -y`.
   - **CLI Traceability**: Keep `tools.confirm_commands: true` and `confirm_writes: true` in `config.yaml`; pass `--bypass-warning -y` on the CLI.
 
 ---

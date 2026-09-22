@@ -113,18 +113,21 @@ CodeMender intentionally ships with a conservative default `config.yaml` to mini
 
 1. **Missed Vulnerabilities or `0 files scanned` (Coverage Gap)**:
    * **Root Cause**: `scan.extensions.include` defaults strictly to `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Files with other suffixes or files exceeding `scan.max_file_size_kb: 500` are silently skipped.
-   * **Surgical Fix**: Check the target repository's primary source files (`git ls-files`) and append **only the specific suffixes needed for that project** (e.g., add `".tsx", ".jsx"` for Next.js/React, `".mjs"` for ES modules, `".rs"` for Rust, `".kt"` for Kotlin, `".swift"` for Swift, `".cs"` for C#, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/deployment configs), then re-run `cm find`.
+   * **Surgical Fix**: Check the target repository's primary source files (`git ls-files`) and append **only the specific suffixes needed for that project** (e.g., add `".tsx", ".jsx"` for Next.js/React, `".mjs"` for ES modules, `".rs"` for Rust, `".kt"` for Kotlin, `".swift"` for Swift, `".cs"` for C#, `".hpp", ".hxx"` for C++ headers, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/deployment configs), then re-run `cm find`.
 2. **Slow Scan Performance or High Token Usage (Scope Bloat)**:
    * **Root Cause**: `scan.exclude_dirs` defaults only to `["node_modules"]`. If the repo contains local virtual environments or build outputs, `cm find` will scan thousands of third-party `site-packages` or compiled bundles.
-   * **Surgical Fix**: Add present artifact/dependency directories (e.g., `".venv"`, `"venv"`, `".next"`, `"dist"`, `"build"`, `"vendor"`, `"target"`) to `scan.exclude_dirs`.
-3. **Traceability Principle for `tools.confirm_*`**:
+   * **Surgical Fix**: Add present artifact/dependency directories (e.g., `".venv"`, `"venv"`, `".next"`, `"dist"`, `"build"`, `"vendor"`, `"target"`, `"bin"`, `"obj"`) to `scan.exclude_dirs`.
+3. **Subdirectory Scan Boundary Narrowing (`project_paths` — Reactive Turn-2 Adjustment Only)**:
+   * **Why Default is Empty**: `cm init` leaves `project_paths` unset (`[]`) to preserve **least-privilege Monorepo isolation** (restricting `cm __worker --allowed-roots` strictly to the `cm find <target>` directory).
+   * **When to Tune Reactively**: Prefer running `cm find . -y` from `${PROJECT_ROOT}` on Turn 1. If you scan a subdirectory (`cm find ./src -y`) and subsequent `cm verify` / `cm fix` runs cannot read root manifests (`Cargo.toml`, `composer.json`, `.git`) or initialize a nested `<subdir>/.git` & `<subdir>/.gitignore`, **reactively** set `project_paths: ["${PROJECT_ROOT}"]` in `.codemender/config.yaml` and delete the unintended `<subdir>/.git` directory.
+4. **Traceability Principle for `tools.confirm_*`**:
    * Leave `tools.confirm_commands: true` and `tools.confirm_writes: true` untouched in `.codemender/config.yaml`. Always pass `-y` / `--bypass-warning` explicitly on the CLI so automated actions remain visible and traceable in command logs.
 
 ---
 
 ## Phase 2: Scalable 2-Tier Verification (Eliminating False Positives Without Sandbox Deadlocks)
 
-Raw static analysis findings can contain false positives. However, on macOS/Linux developer machines, `cm`'s internal `exebox` (`sandbox-exec`) blocks local TCP port binding (`localhost:<port>`) and blocks `process-exec*` on toolchains installed outside `/usr/bin` (such as `~/.nvm`, `/opt/homebrew`, `~/.pyenv`), causing dynamic verification loops to hang for 15–20 minutes.
+Raw static analysis findings can contain false positives. However, on macOS/Linux developer machines, `cm`'s internal `exebox` (`sandbox-exec`) blocks local TCP port binding (`localhost:<port>`) and blocks `process-exec*` on toolchains installed outside `/usr/bin` (such as `~/.nvm`, `/opt/homebrew`, `~/.pyenv`, `~/.cargo`), causing dynamic verification loops to hang for 15–20 minutes.
 
 Use the **Scalable 2-Tier Verification Architecture**:
 
@@ -133,6 +136,7 @@ Run `cm verify` with the native `--skip-exploit-verification` flag to execute de
 ```bash
 HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 ```
+* **Reactive Escape Hatch (If `.codemender/logs/` Stalls on Compiler Discovery)**: Keep `-c` uncoupled on Turn 1 so `cm` uses its native verification reasoning. If `.codemender/logs/` shows `cm verify` exceeding ~60s running `which mono` or `find / -name cargo` inside the sandbox, re-invoke with `-c "Perform static taint and reachability verification only; do NOT execute run_command to search for compilers in the sandbox"`.
 
 ### Tier 2 (Dynamic Exploit Execution — When Live PoC Execution is Required):
 * **System-Binary CLI / Library Targets**: Run in the default sandbox (`exebox`):

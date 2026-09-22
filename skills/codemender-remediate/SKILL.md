@@ -96,6 +96,19 @@ cm fix <finding-id> -c "<guidance>" --bypass-warning -y
 
 * If `build.command` fails (tests break) or the re-attack succeeds (vulnerability persists), CodeMender automatically rejects the patch candidate.
 
+### Reactive Turn-2 Escape Hatches (Only When Needed):
+Do **NOT** proactively restrict `run_command` or override `project_paths` on Turn 1—letting `cm fix` run natively preserves Monorepo least-privilege boundaries and allows in-loop compiler self-correction when system toolchains (`/usr/bin/python3`, `/usr/bin/clang++`, `/usr/bin/ruby`) are available. Apply these **reactive adjustments on Turn 2** only if you observe the following symptoms:
+1. **Symptom A — Sandbox Compiler Discovery Loop (`which mono`, `find / -name cargo` >60s)**:
+   * When target language toolchains live outside `/usr/bin` (e.g., `~/.cargo`, `/opt/homebrew`, `.NET SDK`), the cloud agent may spend 15–25 tool steps searching the sandbox filesystem for compilers or trying to re-run a stale `VERIFY` session's `.exploit/PLAN.md`.
+   * **Reactive Fix**: Re-invoke `cm fix` with an explicit static edit constraint in `-c` and `--no-cache --bypass-warning -y`, delegating compilation verification to `OUTER_BUILD_CMD` in the host shell:
+     ```bash
+     HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
+     cm fix <finding-id> -c "<domain guidance>. IMPORTANT: Do NOT call run_command in the sandbox; apply the code fix directly via search_and_replace and rely on build.command." --no-cache --bypass-warning -y
+     ```
+2. **Symptom B — Subdirectory Worker Boundary (`--allowed-roots` locked to `<subdir>` or nested `<subdir>/.git`)**:
+   * If `cm find` was executed on a subdirectory (e.g., `cm find ./src`) rather than `.`, `cm __worker` scopes `--workspace` and `--allowed-roots` to `./src`, which blocks access to root manifests (`Cargo.toml`, `composer.json`, `.git`) and may initialize a nested `./src/.git` repository.
+   * **Reactive Fix**: Set `project_paths: ["${PROJECT_ROOT}"]` in `.codemender/config.yaml`, remove any unintended `<subdir>/.git` and `<subdir>/.gitignore`, and re-run `cm fix`.
+
 ---
 
 ## Phase 3: VCS Diff Review & Change Management
