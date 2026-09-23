@@ -59,7 +59,7 @@ Before using the plugin, ensure your environment meets the following requirement
    *Ensure your active Google Cloud project has access to CodeMender on Gemini Enterprise Agent Platform.*
 
 3. **CodeMender CLI (`cm`) Installation & Updates**:
-   Review and run the bundled installer script (requires `curl` and `unzip`; supports optional `CM_SHA256` checksum verification):
+   Review and run the bundled installer script (requires `curl` and `unzip`):
    ```bash
    bash scripts/install_cm.sh
    ```

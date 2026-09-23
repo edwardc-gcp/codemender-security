@@ -96,25 +96,7 @@ if [ "${DOWNLOAD_SUCCESS}" = "false" ]; then
   exit 1
 fi
 
-# 5. Integrity / SHA-256 Verification (P0-6)
-if command -v shasum >/dev/null 2>&1; then
-  ACTUAL_SHA256="$(shasum -a 256 "${TMP_DIR}/${PACKAGE}" | awk '{print $1}')"
-elif command -v sha256sum >/dev/null 2>&1; then
-  ACTUAL_SHA256="$(sha256sum "${TMP_DIR}/${PACKAGE}" | awk '{print $1}')"
-else
-  ACTUAL_SHA256="unavailable"
-fi
-echo "🔒 Archive SHA-256 (${PACKAGE}): ${ACTUAL_SHA256}"
-
-if [ -n "${CM_SHA256:-}" ]; then
-  if [ "${ACTUAL_SHA256}" != "${CM_SHA256}" ]; then
-    echo "❌ Error: SHA-256 checksum mismatch! Expected ${CM_SHA256}, got ${ACTUAL_SHA256}." >&2
-    exit 1
-  fi
-  echo "✅ SHA-256 checksum verified."
-fi
-
-# 6. Extract and install
+# 5. Extract and install
 unzip -q -o "${TMP_DIR}/${PACKAGE}" -d "${TMP_DIR}"
 BIN_NAME="cm"
 if [ -f "${TMP_DIR}/cm.exe" ]; then
@@ -126,7 +108,7 @@ mv "${TMP_DIR}/${BIN_NAME}" "${TARGET_DIR}/${BIN_NAME}"
 
 echo "✅ Installed CodeMender CLI to ${TARGET_DIR}/${BIN_NAME}"
 
-# 7. Verify installation and path (isolated in TMP_DIR so workspace is untouched)
+# 6. Verify installation and path (isolated in TMP_DIR so workspace is untouched)
 export PATH="${TARGET_DIR}:${PATH}"
 if command -v cm >/dev/null 2>&1; then
   echo "✅ Version: $(cm --version)"
