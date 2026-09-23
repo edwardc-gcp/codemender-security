@@ -76,9 +76,13 @@ if [ -n "${DIRTY_FILES}" ]; then
   git stash push -u -m "${CM_STASH_MSG}"
 fi
 
-# 3. Resolve actionable findings from `cm report -f json` (Top-level JSON Array of finding_id objects)
+# 3. Resolve actionable findings from `cm report -f json` (Supports jq, python3, or pure awk fallback)
 if [ ${#TARGET_FIDS[@]} -eq 0 ]; then
-  FINDINGS_RAW="$("${CM_EXEC}" report -f json 2>/dev/null | python3 -c '
+  REPORT_JSON="$("${CM_EXEC}" report -f json 2>/dev/null || true)"
+  if command -v jq >/dev/null 2>&1; then
+    FINDINGS_RAW="$(printf '%s' "${REPORT_JSON}" | sed -n '/^\[/,$p' | jq -r '.[] | select(.status != "FIXED" and .status != "DISMISSED") | (.finding_id // .id // empty)' 2>/dev/null || true)"
+  elif command -v python3 >/dev/null 2>&1; then
+    FINDINGS_RAW="$(printf '%s' "${REPORT_JSON}" | python3 -c '
 import sys, json
 try:
     raw = sys.stdin.read()
@@ -94,6 +98,24 @@ try:
 except Exception as e:
     print(f"⚠️ Warning: failed to parse cm report JSON: {e}", file=sys.stderr)
 ' || true)"
+  else
+    # Pure POSIX awk fallback when neither jq nor python3 is installed
+    FINDINGS_RAW="$(printf '%s\n' "${REPORT_JSON}" | awk '
+      /"finding_id"[[:space:]]*:/ {
+        match($0, /"finding_id"[[:space:]]*:[[:space:]]*"[^"]+"/);
+        s = substr($0, RSTART, RLENGTH);
+        sub(/.*:[[:space:]]*"/, "", s);
+        sub(/"$/, "", s);
+        fid = s;
+      }
+      /"status"[[:space:]]*:/ {
+        if (fid != "" && $0 !~ /"FIXED"/ && $0 !~ /"DISMISSED"/) {
+          print fid;
+        }
+        fid = "";
+      }
+    ' || true)"
+  fi
   while IFS= read -r fid; do
     [ -z "$fid" ] && continue
     TARGET_FIDS+=("$fid")

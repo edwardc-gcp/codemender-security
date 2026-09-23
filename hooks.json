@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ./scripts/pre_tool_guard.py",
+            "command": "bash ./scripts/pre_tool_guard.sh",
             "timeout": 5
           }
         ]

@@ -8,34 +8,34 @@
 
 The `codemender-security` plugin equips AI coding agents with autonomous security auditing, zero-false-positive exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`)** on the Gemini Enterprise Agent Platform.
 
-Built on the open [Agent Plugins specification](https://agent-plugins.org/), this plugin bundles curated Agent Skills, safety guardrails, and operational runbooks for **Google Antigravity**, **Anthropic Claude Code**, **OpenAI Codex**, and **Gemini CLI**.
+Built on the open [Agent Plugins specification](https://agent-plugins.org/), this plugin bundles curated Agent Skills, safety guardrails, and operational runbooks for **Google Antigravity**, **Anthropic Claude Code**, and **OpenAI Codex**.
 
 ---
 
 ## 🚀 Installation
 
-### Antigravity
-Clone into your global Antigravity plugins directory:
+### Google Antigravity (`agy`)
+Install directly via the Antigravity CLI:
 
 ```bash
-git clone https://github.com/edwardc-gcp/codemender-security.git ~/.gemini/config/plugins/codemender-security
+agy plugin install https://github.com/edwardc-gcp/codemender-security.git
 ```
 
 > [!TIP]
 > You can also install via the Antigravity IDE UI under **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL**.
 
-### Gemini CLI
-Install directly as a Gemini CLI extension (`gemini-extension.json` points to `SKILL.md`):
+### Anthropic Claude Code (`claude`)
+Install directly via the Claude Code CLI:
 
 ```bash
-gemini extensions install https://github.com/edwardc-gcp/codemender-security.git
+claude plugin install https://github.com/edwardc-gcp/codemender-security.git
 ```
 
-### Claude Code / Codex CLI
-Clone the repository and load the plugin directory or copy `CLAUDE.md` / `skills/` into your workspace configuration:
+### OpenAI Codex (`codex`)
+Install directly via the OpenAI Codex CLI:
 
 ```bash
-git clone https://github.com/edwardc-gcp/codemender-security.git ~/.claude/plugins/codemender-security
+codex plugin install https://github.com/edwardc-gcp/codemender-security.git
 ```
 
 ---
