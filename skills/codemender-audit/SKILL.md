@@ -1,181 +1,138 @@
 ---
 name: codemender-audit
-description: Autonomous security auditing, fast differential AST scanning, third-party report ingestion (Simple JSON / basic SARIF), and sandboxed PoC exploit verification using Google Cloud CodeMender (cm). ACTIVATE this skill whenever scanning codebases, reviewing PR diffs, verifying vulnerabilities without false positives, or preparing SARIF security reports.
+description: Use this skill when scanning codebases for vulnerabilities, auditing PR diffs, importing third-party SARIF or Simple JSON reports, or running sandboxed exploit PoC verification with Google Cloud CodeMender (cm find, cm report import, cm verify, cm report).
 ---
 
-# CodeMender Autonomous Security Audit Skill
+# CodeMender Autonomous Security Audit & Verification (`codemender-audit`)
 
-This skill guides coding agents (Antigravity, Claude Code, OpenAI Codex, Gemini CLI) to discover, triage, and verify security vulnerabilities using the Google Cloud CodeMender (`cm`) CLI.
-
-It delivers **grounded, empirical security audits** by executing semantic taint verification and dynamic proof-of-concept (PoC) exploits inside an isolated local OS-level sandbox before presenting findings to developers.
-
----
-
-## Quick Reference & Decision Tree
-
-* **Scanning a freshly generated / vibe-coded application**: ➔ Run **Workflow A (Full Scan)**.
-* **Scanning uncommitted Git changes or PR diff**: ➔ Run **Workflow B (Incremental Scan)**.
-* **Ingesting external SAST findings (Simple JSON / basic SARIF)**: ➔ Run **Workflow C (Report Ingestion)**.
-* **Troubleshooting missed files (`0 scanned`) or slow scans**: ➔ Run **Workflow D (`config.yaml` Surgical Tuning)**.
-* **Confirming exploitability on candidate findings**: ➔ Run **Phase 2 (2-Tier Verification)**.
+You are an Autonomous AppSec Auditor powered by **Google Cloud CodeMender (`cm`)**. Your objective is to discover high-impact vulnerabilities (`cm find`), ingest third-party scanner alerts (`cm report import`), and verify exploitability (`cm verify`) inside an isolated sandbox before recommending code changes.
 
 ---
 
-## Phase 0: Stateless On-the-Fly Scoping Handshake
+## Phase 0: Environment Verification & Stateless Wrapper (`cm_exec.sh`)
 
-Before executing scans, ensure environment readiness and project isolation:
+Every `run_command` executes in an isolated subshell. To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PROJECT_ROOT` and `REAL_HOME` are always resolved in every subshell, **always invoke `cm` via [scripts/cm_exec.sh](../../scripts/cm_exec.sh)**:
 
 ```bash
-REAL_HOME="${HOME}"
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
-GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
+[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-# 1. Verify cm binary (NEVER download/execute binaries without explicit user permission)
-if ! command -v cm >/dev/null 2>&1; then
-  echo "❌ CodeMender CLI (cm) is not installed in PATH."
-  echo "Ask the user for permission before running install_cm.sh (located in the plugin's scripts/ directory)."
+# 1. Verify binary installation (Do NOT run install_cm.sh without asking user permission first)
+if ! command -v cm &> /dev/null; then
+  echo "⚠️ CodeMender CLI ('cm') is not installed. Ask user permission before running: bash ${PLUGIN_DIR}/scripts/install_cm.sh"
+  exit 1
 fi
 
-# 2. Verify Google Cloud Application Default Credentials (ADC)
-if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
-  echo "ADC credentials missing. Please run: gcloud auth application-default login"
-fi
-
-# 3. Protect localized .codemender state from internal 'git clean -fd' (supports worktrees & submodules)
-# Note: To revert this local exclusion later, remove .codemender/, .cm_project, and .exploit/ from $(git rev-parse --git-path info/exclude)
-EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
-if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
-  for entry in ".codemender/" ".cm_project" ".exploit/"; do
-    grep -qxF "$entry" "${EXCLUDE_FILE}" 2>/dev/null || echo "$entry" >> "${EXCLUDE_FILE}"
-  done
-fi
-
-# 4. Initialize workspace if not already initialized (note: cm init --verify also creates .codemender/logs/)
-if [ ! -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
-  HOME="${PROJECT_ROOT}" \
-  GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" \
-  CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
-  GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
-  GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
-  cm init
-fi
+# 2. Safe initialization (automatically populates .git/info/exclude and skips if config.yaml exists)
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" init
 ```
+
+* **Build & Sandbox Configuration**: Inspect `.codemender/config.yaml` (see [references/config_schema.md](references/config_schema.md)).
+  * Dynamically verify `command -v pytest` / `node` / `python3` before setting `build.command`.
+  * If `exebox` (`sandbox-exec`) blocks local network sockets during builds, set `sandbox.network.profile: "permissive-open"`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`), set `build.command: "true"` for scanning and enforce outer-shell verification during remediation.
 
 ---
 
-## Phase 1: Vulnerability Discovery Workflows
+## Phase 1: Deep AST Discovery & Differential PR Scanning (`cm find`)
 
-### Workflow A: Vibe-Coding Full Scan & Targeted Module Scan
-When a user asks to audit a newly created MVP (≤50 files) or perform a targeted module pass:
+Choose the optimal scan mode based on user intent:
 
+### Workflow A: Targeted Module Batch or Full Codebase Scan
 ```bash
-# For small MVPs (<= 50 files):
-HOME="${PROJECT_ROOT}" \
-GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" \
-CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
-GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
-GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
-cm find . -y
+PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
+[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-# For medium/large repositories, scan targeted modules (10-50 files at a time) per official performance guidance:
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/auth/ -y
-```
-* CodeMender performs deep AST and taint analysis across all supported source files.
-* Identifies unauthenticated endpoints, hardcoded credentials, open CORS policies, and injection sinks.
+# For medium/large repositories, scan in logical batches of 10-50 files per directory:
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find ./src/auth/ -y -c "Focus on authentication bypass, IDOR, injection, and SSRF"
 
-### Workflow B: Incremental Diff Scan (Fast PR / Pre-commit Check)
-When the user has modified files and wants a fast safety check:
-
-```bash
-# Leverages .codemender/state.db when scan.incremental is true (default in config.yaml)
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find . -y
-
-# Or target specifically modified paths:
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm find ./src/auth/ -y
-```
-* Leverages local AST caching to scan **only modified code slices**.
-* Completes in 5–15 seconds with minimal token consumption.
-
-### Workflow C: Third-Party Report Ingestion (`Simple JSON` & `Basic SARIF`)
-When the user supplies a SAST report (`cm report import` supports **Simple JSON and basic SARIF** formats, such as `semgrep.sarif`):
-
-```bash
-# Ingest basic SARIF report (e.g., Semgrep)
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f findings.sarif
-
-# Ingest simple JSON report
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report import -f findings.json
+# For small repositories (<50 files):
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . -y
 ```
 
-### Workflow D: Surgical `.codemender/config.yaml` Tuning (Troubleshooting Coverage & Performance)
-CodeMender intentionally ships with a conservative default `config.yaml` to minimize scan latency and token usage. **Do NOT proactively dump all possible extensions into `config.yaml` upfront.** Instead, inspect and surgically tune `${PROJECT_ROOT}/.codemender/config.yaml` (see `references/config_schema.md`) when encountering specific symptoms:
+### Workflow B: Fast PR / Differential Scan (<15 Seconds)
+When reviewing uncommitted work or a feature branch:
+```bash
+PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
+[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-1. **Missed Vulnerabilities or `0 files scanned` (Coverage Gap)**:
-   * **Root Cause**: `scan.extensions.include` defaults strictly to `[".py", ".java", ".go", ".js", ".ts", ".c", ".cc", ".cpp", ".h", ".rb", ".php"]`. Files with other suffixes or files exceeding `scan.max_file_size_kb: 500` are silently skipped.
-   * **Surgical Fix**: Check the target repository's primary source files (`git ls-files`) and append **only the specific suffixes needed for that project** (e.g., add `".tsx", ".jsx"` for Next.js/React, `".mjs"` for ES modules, `".rs"` for Rust, `".kt"` for Kotlin, `".swift"` for Swift, `".cs"` for C#, `".hpp", ".hxx"` for C++ headers, or `".yaml", ".tf", ".sh"` when explicitly auditing IaC/deployment configs), then re-run `cm find`.
-2. **Slow Scan Performance or High Token Usage (Scope Bloat)**:
-   * **Root Cause**: `scan.exclude_dirs` defaults only to `["node_modules"]`. If the repo contains local virtual environments or build outputs, `cm find` will scan thousands of third-party `site-packages` or compiled bundles.
-   * **Surgical Fix**: Add present artifact/dependency directories (e.g., `".venv"`, `"venv"`, `".next"`, `"dist"`, `"build"`, `"vendor"`, `"target"`, `"bin"`, `"obj"`) to `scan.exclude_dirs`.
-3. **Subdirectory Scan Boundary Narrowing (`project_paths` — Reactive Turn-2 Adjustment Only)**:
-   * **Why Default is Empty**: `cm init` leaves `project_paths` unset (`[]`) to preserve **least-privilege Monorepo isolation** (restricting `cm __worker --allowed-roots` strictly to the `cm find <target>` directory).
-   * **When to Tune Reactively**: Prefer running `cm find . -y` from `${PROJECT_ROOT}` on Turn 1. If you scan a subdirectory (`cm find ./src -y`) and subsequent `cm verify` / `cm fix` runs cannot read root manifests (`Cargo.toml`, `composer.json`, `.git`) or initialize a nested `<subdir>/.git` & `<subdir>/.gitignore`, **reactively** set `project_paths: ["${PROJECT_ROOT}"]` in `.codemender/config.yaml` and delete the unintended `<subdir>/.git` directory.
-4. **Traceability Principle for `tools.confirm_*`**:
-   * Leave `tools.confirm_commands: true` and `tools.confirm_writes: true` untouched in `.codemender/config.yaml`. Always pass `-y` / `--bypass-warning` explicitly on the CLI so automated actions remain visible and traceable in command logs.
+MODIFIED_DIRS=$(git diff --name-only HEAD | xargs -n1 dirname 2>/dev/null | sort -u | tr '\n' ' ')
+if [ -n "${MODIFIED_DIRS}" ]; then
+  # shellcheck disable=SC2086
+  bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find ${MODIFIED_DIRS} -y -c "Audit recent uncommitted diff changes for security regressions"
+fi
+```
+
+### Workflow C: Ingesting External Scanner Reports (`cm report import`)
+To verify findings from CodeQL, Semgrep, Snyk, or custom auditors (see [references/finding_format.md](references/finding_format.md) for the 6-field Simple JSON schema):
+```bash
+PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
+[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
+
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report import -f third-party-findings.json
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report import -f findings.sarif
+```
+
+### Workflow D: Surgical Config Tuning (`.codemender/config.yaml`)
+Never leave `.codemender/config.yaml` at generic defaults when scanning specialized repositories (see [references/config_schema.md](references/config_schema.md)):
+1. **Scan Latency >60s**: Add `dist`, `build`, `coverage`, `migrations`, `docs`, `*.min.js` to `scan.exclude_dirs`.
+2. **Non-Standard Extensions**: Add `.mjs`, `.cjs`, `.vue`, `.svelte`, `.kt`, `.swift`, `.rb`, `.php` to `scan.extensions.include` (add `.yaml`, `.yml`, `.tf`, `.sh` only when explicitly auditing IaC/deployment manifests; never globally add `.json`).
+3. **Polyglot / Monorepo**: Populate `project_paths` with active microservice roots (e.g., `["./services/auth", "./services/billing"]`).
+4. **Compiler Search Loop (>60s inside `exebox`)**: When `cm` wastes turns searching for compilers inside `exebox`, set `build.command: "true"` for scanning and rely on outer-shell verification.
 
 ---
 
-## Phase 2: Scalable 2-Tier Verification (Eliminating False Positives Without Sandbox Deadlocks)
+## Phase 2: 2-Tier Exploit PoC Verification (`cm verify`)
 
-Raw static analysis findings can contain false positives. However, on macOS/Linux developer machines, `cm`'s internal `exebox` (`sandbox-exec`) blocks local TCP port binding (`localhost:<port>`) and blocks `process-exec*` on toolchains installed outside `/usr/bin` (such as `~/.nvm`, `/opt/homebrew`, `~/.pyenv`, `~/.cargo`), causing dynamic verification loops to hang for 15–20 minutes.
+Before recommending any code change, validate findings using the **2-Tier Verification Strategy**:
 
-Use the **Scalable 2-Tier Verification Architecture**:
-
-### Tier 1 (Default — Fast Semantic & Taint Verification, 15–25s):
-Run `cm verify` with the native `--skip-exploit-verification` flag to execute deep cloud taint-flow, reachability, and sanitizer verification **without** spawning blocked sandbox sockets:
+### 1. Pre-Verify Tracked Stash Check
 ```bash
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
+PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
+[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
+
+CM_STASH_MSG=""
+if [ -n "$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.cm_project$|\.exploit/|\.cache/|\.npm/|\.cargo/|\.local/|\.config/|.*\.sarif$)')" ]; then
+  CM_STASH_MSG="cm-pre-verify-backup-$(date +%s)"
+  git stash push -u -m "${CM_STASH_MSG}"
+fi
+
+# Tier 1 (Default — Fast Semantic & Dataflow Verification, 15-25s; avoids 15-min sandbox hangs):
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
+
+# Tier 2 (On-Demand — Full Dynamic Sandboxed PoC Execution inside OS exebox):
+# bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> -c "Construct minimal PoC to trigger exploit" --no-reset --bypass-warning -y
+
+# Restore tracked stash if created in this run
+if [ -n "${CM_STASH_MSG}" ]; then
+  STASH_REF="$(git stash list | grep -F "${CM_STASH_MSG}" | head -n 1 | cut -d: -f1 || true)"
+  [ -n "${STASH_REF}" ] && git stash pop "${STASH_REF}"
+fi
 ```
-* **Reactive Escape Hatch (If `.codemender/logs/` Stalls on Compiler Discovery)**: Keep `-c` uncoupled on Turn 1 so `cm` uses its native verification reasoning. If `.codemender/logs/` shows `cm verify` exceeding ~60s running `which mono` or `find / -name cargo` inside the sandbox, re-invoke with `-c "Perform static taint and reachability verification only; do NOT execute run_command to search for compilers in the sandbox"`.
 
-### Tier 2 (Dynamic Exploit Execution — When Live PoC Execution is Required):
-* **System-Binary CLI / Library Targets**: Run in the default sandbox (`exebox`):
-  ```bash
-  HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm verify <finding-id> --no-reset --bypass-warning -y
-  ```
-* **Network-Dependent Builds/Tests (`sandbox.network.profile`)**: Before disabling the sandbox, prefer setting `sandbox.network.profile: "permissive-open"` and `security.protected_files: ["~/.ssh/*", "~/.aws/*"]` in `.codemender/config.yaml` (see `references/config_schema.md`) so local sockets work while filesystem protection remains active.
-* **`--unrestricted` Mode (CRITICAL RCE WARNING — Requires Explicit Per-Invocation Human Consent)**:
-  > [!CAUTION]
-  > `--unrestricted` disables **BOTH** the filesystem sandbox (`exebox`) **AND the command policy denylist (`allow agent full system access`)** while executing LLM-generated exploit scripts! Running `--unrestricted` against an untrusted repository exposes the host to **Prompt Injection $\rightarrow$ Arbitrary Remote Code Execution (RCE)**.
-  > * **Mandatory Rule**: NEVER pass `--unrestricted` unless (1) the target code is owned by the user or OSI-licensed, (2) the user explicitly approves that specific invocation, (3) uncommitted work is stashed (`git stash push -u`), and (4) `security.protected_files` is configured or execution is inside a disposable VM/container.
-
-### Triage Integrity Rules:
-1. Check `cm report -f json` and `${PROJECT_ROOT}/.exploit/` (`PLAN.md`, `LOG.md`, `REPORT.md`).
-2. If dynamic exploit execution fails or times out, retain the finding as **`OPEN / UNCONFIRMED`** for manual security inspection.
-   > [!WARNING]
-   > Do **NOT** classify failed dynamic PoC executions as false positives. Only treat a finding as a False Positive when `cm verify` explicitly marks the status `DISMISSED` with concrete code-level proof.
+### 2. Strict Sandbox Policy & Triage Integrity
+* **NEVER use `--unrestricted` by default**: `--unrestricted` disables **both** the filesystem sandbox (`exebox`) AND the command policy denylist (`full system access`). Running `cm verify --unrestricted` on untrusted repositories exposes the host to Prompt Injection $\rightarrow$ RCE. Require **explicit per-invocation human approval**.
+* **Triage Integrity**: If `cm verify` fails to trigger a crash in the sandbox (e.g., missing live DB or network socket), classify the finding as **`UNCONFIRMED / OPEN`**—**NEVER** label it a "False Positive" unless static source analysis proves strong sanitization exists.
 
 ---
 
-## Phase 3: Reporting & Presentation
-
-Display the triage summary to the user:
+## Phase 3: Reporting & SARIF Export (`cm report`)
 
 ```bash
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report -f md
+PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
+[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
+
+# Export SARIF v2.1.0 for GitHub Code Scanning / Google Cloud SCC
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
+
+# Query actionable findings (OPEN / REOPENED) via JSON array output
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f json
 ```
 
-### Presentation Format:
-Present findings in a structured Markdown table:
+Once findings are verified, transition to **`codemender-remediate`** ([skills/codemender-remediate/SKILL.md](../codemender-remediate/SKILL.md)) to generate verified patches.
 
-| Finding ID | Severity | Status | CWE | Vulnerable Location | Verification Artifact |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `f-1a2b3c` | CRITICAL | OPEN (Verified) | CWE-89 (SQL Injection) | `src/auth/login.go:45` | `.exploit/PLAN.md` |
-| `f-4d5e6f` | HIGH | OPEN (Verified) | CWE-22 (Path Traversal) | `src/api/files.ts:88` | `.exploit/LOG.md` |
-| `f-7g8h9i` | MEDIUM | OPEN (Unconfirmed) | CWE-798 (Hardcoded Key) | `config/default.json:12` | — |
+---
 
-### SARIF Export for CI/CD:
-If requested, generate standard SARIF 2.1.0 output:
-```bash
-HOME="${PROJECT_ROOT}" GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" cm report -f sarif > "${PROJECT_ROOT}/codemender-results.sarif"
-```
+## Reference Documentation
+* [CLI Command Reference](references/cli_reference.md)
+* [Configuration & Sandbox Schema](references/config_schema.md)
+* [Finding & SARIF Format Reference](references/finding_format.md)

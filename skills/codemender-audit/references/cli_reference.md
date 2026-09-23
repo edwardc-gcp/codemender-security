@@ -32,7 +32,7 @@ cm "$@"
 
 | Command | Purpose |
 | :--- | :--- |
-| `cm find . -y` | Full codebase AST scan using default `gemini-3.8-flash` reasoning engine inside OS sandbox (`exebox`). |
+| `cm find . -y` | Full codebase AST scan using default cloud Gemini reasoning engine inside OS sandbox (`exebox`). |
 | `cm find . -y` *(Incremental)* | When `scan.incremental: true` in `.codemender/config.yaml`, CodeMender automatically diffs AST against `.codemender/state.db` and only scans modified files (5-15s). |
 | `cm find ./src/auth/ -y` | Target a specific subdirectory or modified service module. |
 | `cm find . -y -c "Focus on SQL injection and auth bypass"` | Scan with explicit contextual guidance. |

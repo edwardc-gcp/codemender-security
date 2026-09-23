@@ -16,3 +16,4 @@ Thumbs.db
 # Security Reports
 *.sarif
 report.html
+REVIEW*.md
