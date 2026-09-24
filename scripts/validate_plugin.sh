@@ -101,9 +101,8 @@ for m in manifests:
     with open(m) as f:
         data = json.load(f)
         versions.add(data.get("version"))
-        desc = data.get("description", "")
-        if "not an official Google product" not in desc:
-            print(f"❌ Missing unofficial disclaimer in {m}")
+        if "author" in data and (not isinstance(data["author"], dict) or not data["author"].get("name")):
+            print(f"❌ Invalid author schema in {m}: expected object with 'name'")
             sys.exit(1)
         ver = data.get("version")
         print(f"✅ Manifest OK: {m} (v{ver})")

@@ -1,10 +1,7 @@
 # CodeMender Security Plugin (`codemender-security`)
 
 > [!IMPORTANT]
-> **DISCLAIMER: This is not an official Google product.**
-> This repository is an unofficial, community-maintained Agent Plugin and Skill wrapper that orchestrates the Google Cloud CodeMender (`cm`) CLI.
-> - **Public Preview & Scope**: Google Cloud CodeMender is currently in **Public Preview** (contact your Google Cloud representative for access) and is intended for **testing and evaluation purposes only** (not for commercial production). Only scan and verify code that you own, are explicitly authorized to test, or that is licensed under an OSI-approved open-source license.
-> - **Non-Interactive Execution (Section 20(j))**: Because AI coding agents execute CLI tools in headless background subshells, this plugin passes `-y --bypass-warning` on the CLI to prevent stdin hangs. Under Google Cloud Preview Terms Section 20(j), disabling or bypassing interactive confirmation prompts is the operator's responsibility and should be performed in isolated workspaces, sandbox VMs, or evaluated environments.
+> **CodeMender Public Preview Access**: Access to the Google Cloud CodeMender (`cm`) API and artifacts is currently in **Public Preview** (contact your Google Cloud representative for project allowlisting). Ensure your Google Cloud account is authenticated and associated with an authorized project where the Vertex AI API is enabled before running scans.
 
 The `codemender-security` plugin equips AI coding agents with autonomous security auditing, zero-false-positive exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`)** on the Gemini Enterprise Agent Platform.
 
