@@ -59,11 +59,11 @@ Before using the plugin, ensure your environment meets the following requirement
    *Ensure your active Google Cloud project has access to CodeMender on Gemini Enterprise Agent Platform.*
 
 3. **CodeMender CLI (`cm`) Installation & Updates**:
-   Review and run the bundled installer script (requires `curl` and `unzip`):
+   Review and run the bundled cross-platform installer script (requires `curl` and `unzip`), which checks the latest official release manifest, downloads the binary, and verifies its uncompressed SHA-256 checksum:
    ```bash
-   bash scripts/install_cm.sh
+   bash ~/.gemini/config/plugins/codemender-security/scripts/install_cm.sh
    ```
-   *Verify installation with `cm --version`. Because `-y` skips automatic update checks during agent runs, periodically update the CLI manually via `cm update` (or `sudo cm update`).*
+   *Re-running `install_cm.sh` automatically checks for newer remote releases and upgrades `cm` when available (or run `cm update` manually).*
 
 4. **Privacy & Telemetry Opt-Out (Optional)**:
    CodeMender follows a local-first architecture (only targeted code snippets are transmitted via the Interactions API). CLI telemetry (which excludes source code, findings, and identity) is enabled by default; to disable it, export:
@@ -81,13 +81,15 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`codemender-remediate`](./skills/codemender-remediate)**:
   Domain-guided patch synthesis (`cm fix`), automated regression testing, exploit re-attack validation, and an atomic multi-vulnerability remediation loop with enforced outer-shell build gates and automatic `git stash` restoration.
 
-### Safety Rules & Guardrails
-- **[`codemender-safety.md`](./rules/codemender-safety.md)**:
-  Always-active safety guardrails that protect developer workspaces:
-  - **Non-Destructive VCS Lifecycle**: Automatically stashes uncommitted & untracked (`-u`) code before running fixes, protects `.codemender/` via `.git/info/exclude`, stages newly created files (`git add -A`), and restores stashed work (`git stash pop`) with conflict detection after remediation.
-  - **Scalable Build Validation & Hard Gate**: Probes active toolchains (`command -v`) and enforces an outer-shell build/syntax hard gate before committing patches.
-  - **Zero Data-Loss Config Initialization**: Guarantees existing `.codemender/config.yaml` files are never overwritten.
-  - **Stateless Workspace Scoping**: Isolates local database and configuration per project under `${PROJECT_ROOT}/.codemender/` while forwarding `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`.
+### Safety Rules, Hooks & Execution Wrappers
+- **[`codemender-safety.md`](./rules/codemender-safety.md)** *(Always-On Routing Stub)*:
+  Lightweight (~75-token) always-on rule that enforces wrapper execution and requires explicit operator confirmation before running `install_cm.sh` or `cm verify --unrestricted`.
+- **[`hooks.json`](./hooks.json) & [`pre_tool_guard.sh`](./scripts/pre_tool_guard.sh)** *(Deterministic `PreToolUse` Interceptor)*:
+  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh` and `--unrestricted` verification.
+- **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
+  Isolates `.codemender/` and `HOME="${PROJECT_ROOT}/.cache"` per repository, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG` (ADC), prevents `.codemender/config.yaml` overwrites, and registers `.codemender/` and `.cache/` in `.git/info/exclude`.
+- **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
+  Automates non-destructive `git stash push -u` tracking, dynamic language toolchain detection (`OUTER_BUILD_CMD` hard gate), per-finding `cm fix` synthesis, post-commit `cm find` re-scans, and automatic `git stash pop` restoration.
 
 ---
 
