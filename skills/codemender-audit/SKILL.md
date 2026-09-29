@@ -9,7 +9,16 @@ You are an Autonomous AppSec Auditor powered by **Google Cloud CodeMender (`cm`)
 
 ---
 
-## Phase 0: Environment Verification & Stateless Wrapper (`cm_exec.sh`)
+## Phase 0: Environment Diagnostics & Binary Verification
+
+### 0.1 Fast Diagnostic Health Check (`check_env.sh`)
+When the user asks to verify the environment, check plugin readiness, or inspect prerequisites:
+1. Execute `bash ${PLUGIN_DIR}/scripts/check_env.sh` directly.
+2. **Strict prohibition**: Do NOT execute internal developer test suites (`validate_plugin.sh`) or inspect git commit history (`git status`, `git log`, `git show`) during environment readiness checks.
+3. Present the structured diagnostic table from `check_env.sh` directly to the user.
+4. If the diagnostic reports that `cm` is missing, display the human-in-the-loop consent prompt and ask for authorization (`[y/N]`) before executing `bash ${PLUGIN_DIR}/scripts/install_cm.sh`.
+
+### 0.2 Stateless Wrapper & Initialization (`cm_exec.sh`)
 
 Every `run_command` executes in an isolated subshell. To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PROJECT_ROOT` and `REAL_HOME` are always resolved in every subshell, **always invoke `cm` via [scripts/cm_exec.sh](../../scripts/cm_exec.sh)**:
 
@@ -17,13 +26,7 @@ Every `run_command` executes in an isolated subshell. To prevent `$HOME` polluti
 PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
 [ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-# 1. Verify binary installation (Do NOT run install_cm.sh without asking user permission first)
-if ! command -v cm &> /dev/null; then
-  echo "⚠️ CodeMender CLI ('cm') is not installed. Ask user permission before running: bash ${PLUGIN_DIR}/scripts/install_cm.sh"
-  exit 1
-fi
-
-# 2. Safe initialization (automatically populates .git/info/exclude and skips if config.yaml exists)
+# Safe initialization (automatically populates .git/info/exclude and skips if config.yaml exists)
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" init
 ```
 
