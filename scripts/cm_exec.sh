@@ -46,7 +46,22 @@ if [ "${1:-}" = "init" ]; then
   fi
 fi
 
-# 3. Execute `cm` with isolated HOME and forwarded host credentials
+# 3. Auto-inject --bypass-warning for stateful subcommands (verify, fix) to prevent interactive stdin hangs
+EXTRA_ARGS=()
+if [ "${1:-}" = "verify" ] || [ "${1:-}" = "fix" ]; then
+  HAS_BYPASS=false
+  for arg in "$@"; do
+    if [ "$arg" = "--bypass-warning" ]; then
+      HAS_BYPASS=true
+      break
+    fi
+  done
+  if [ "$HAS_BYPASS" = false ]; then
+    EXTRA_ARGS+=("--bypass-warning")
+  fi
+fi
+
+# 4. Execute `cm` with isolated HOME and forwarded host credentials
 exec env \
   HOME="${PROJECT_ROOT}" \
   CM_REAL_HOME="${REAL_HOME}" \
@@ -54,4 +69,4 @@ exec env \
   CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
   GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
   GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
-  cm "$@"
+  cm "$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
