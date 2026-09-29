@@ -40,24 +40,39 @@ if [ -z "${CMD}" ]; then
   exit 0
 fi
 
+emit_response() {
+  local decision="$1"
+  local reason="$2"
+  if [[ "${RAW_INPUT}" == *"tool_input"* ]]; then
+    local claude_decision="deny"
+    if [[ "${decision}" == "force_ask" || "${decision}" == "ask" ]]; then
+      claude_decision="ask"
+    fi
+    printf '{"decision": "%s", "reason": "%s", "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "%s", "permissionDecisionReason": "%s"}}\n' \
+      "${decision}" "${reason}" "${claude_decision}" "${reason}"
+  else
+    printf '{"decision": "%s", "reason": "%s"}\n' "${decision}" "${reason}"
+  fi
+}
+
 # Rule 1: Hard block `cm init -y` / `cm init --yes` (Zero Data-Loss Guard)
 if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])cm[[:space:]]+init([[:space:]].*)?[[:space:]](-y|--yes)([[:space:]]|$)'; then
   REASON="Blocked by codemender-security guardrail: Never pass -y or --yes to 'cm init' as it overwrites custom .codemender/config.yaml. Use scripts/cm_exec.sh init instead."
-  printf '{"decision": "deny", "reason": "%s", "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "%s"}}\n' "${REASON}" "${REASON}"
+  emit_response "deny" "${REASON}"
   exit 0
 fi
 
 # Rule 2a: Force interactive user confirmation for `--unrestricted` (RCE hazard)
 if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])cm([[:space:]].*)?[[:space:]]--unrestricted([[:space:]]|$)'; then
   REASON="CRITICAL SECURITY WARNING: 'cm --unrestricted' disables both the filesystem sandbox and command denylist (Prompt Injection -> RCE risk). Explicit human confirmation is required."
-  printf '{"decision": "force_ask", "reason": "%s", "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "%s"}}\n' "${REASON}" "${REASON}"
+  emit_response "force_ask" "${REASON}"
   exit 0
 fi
 
 # Rule 2b: Force interactive user confirmation for `install_cm.sh`
 if [[ "${CMD}" == *"install_cm.sh"* ]]; then
   REASON="Binary installation detected (install_cm.sh). Explicit user permission is required before downloading or installing the CodeMender binary."
-  printf '{"decision": "force_ask", "reason": "%s", "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "%s"}}\n' "${REASON}" "${REASON}"
+  emit_response "force_ask" "${REASON}"
   exit 0
 fi
 
@@ -67,7 +82,7 @@ if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|ver
   if [[ "${CMD}" != *"cm_exec.sh"* && "${CMD}" != *"cm_remediate_loop.sh"* ]] && ! printf '%s\n' "${CMD}" | grep -qE '(^|[[:space:]])HOME='; then
     SUB="$(printf '%s\n' "${CMD}" | sed -nE 's/.*(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|report[[:space:]]+import).*/\2/p' | head -n 1)"
     REASON="Blocked unscoped 'cm ${SUB}' invocation (would pollute ~/.codemender or risk git clean -fd). Always invoke via scripts/cm_exec.sh ${SUB} [args...] or scripts/cm_remediate_loop.sh."
-    printf '{"decision": "deny", "reason": "%s", "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "%s"}}\n' "${REASON}" "${REASON}"
+    emit_response "deny" "${REASON}"
     exit 0
   fi
 fi

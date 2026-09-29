@@ -12,7 +12,7 @@ fi
 REAL_HOME="${CM_REAL_HOME:-${HOME}}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ADC_PATH="${REAL_HOME}/.config/gcloud/application_default_credentials.json"
-GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" gcloud config get-value project 2>/dev/null || true)}"
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}"
 
 # 1. Protect runtime and toolchain artifacts in .git/info/exclude from git clean -fd & git add -A
 EXCLUDE_FILE="$(git rev-parse --git-path info/exclude 2>/dev/null || true)"
@@ -61,12 +61,20 @@ if [ "${1:-}" = "verify" ] || [ "${1:-}" = "fix" ]; then
   fi
 fi
 
-# 4. Execute `cm` with isolated HOME and forwarded host credentials
-exec env \
-  HOME="${PROJECT_ROOT}" \
-  CM_REAL_HOME="${REAL_HOME}" \
-  GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" \
-  CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
-  GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
-  GOOGLE_CLOUD_PROJECT="${GCP_PROJECT}" \
-  cm "$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+# 4. Construct execution environment with isolated HOME and forwarded credentials
+CM_ENV=(
+  "HOME=${PROJECT_ROOT}"
+  "CM_REAL_HOME=${REAL_HOME}"
+  "GIT_CONFIG_GLOBAL=${REAL_HOME}/.gitconfig"
+  "GOOGLE_CLOUD_PROJECT=${GCP_PROJECT}"
+)
+if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] && [ -f "${GOOGLE_APPLICATION_CREDENTIALS}" ]; then
+  CM_ENV+=("GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}")
+elif [ -f "${ADC_PATH}" ]; then
+  CM_ENV+=("GOOGLE_APPLICATION_CREDENTIALS=${ADC_PATH}")
+fi
+if [ -d "${REAL_HOME}/.config/gcloud" ]; then
+  CM_ENV+=("CLOUDSDK_CONFIG=${REAL_HOME}/.config/gcloud")
+fi
+
+exec env "${CM_ENV[@]}" cm "$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
