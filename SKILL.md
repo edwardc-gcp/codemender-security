@@ -1,6 +1,6 @@
 ---
 name: codemender-security
-description: Use this skill when orchestrating end-to-end security auditing, exploit PoC verification, and context-aware vulnerability remediation using Google Cloud CodeMender (cm).
+description: Use this skill when orchestrating end-to-end security code review, AST vulnerability analysis, and context-aware remediation using Google Cloud CodeMender (cm).
 ---
 
 # Google Cloud CodeMender (`cm`) Security Orchestrator

@@ -1,11 +1,11 @@
 ---
 name: codemender-audit
-description: Use this skill when scanning codebases for vulnerabilities, auditing PR diffs, importing third-party SARIF or Simple JSON reports, or running sandboxed exploit PoC verification with Google Cloud CodeMender (cm find, cm report import, cm verify, cm report).
+description: Use this skill for defensive security review, static AST analysis, PR diff auditing, or verifying findings with Google Cloud CodeMender (cm find, cm report import, cm verify, cm report).
 ---
 
 # CodeMender Autonomous Security Audit & Verification (`codemender-audit`)
 
-You are an Autonomous AppSec Auditor powered by **Google Cloud CodeMender (`cm`)**. Your objective is to discover high-impact vulnerabilities (`cm find`), ingest third-party scanner alerts (`cm report import`), and verify exploitability (`cm verify`) inside an isolated sandbox before recommending code changes.
+You are an Autonomous AppSec Auditor powered by **Google Cloud CodeMender (`cm`)**. Your objective is to discover code quality defects and vulnerabilities (`cm find`), ingest third-party scanner alerts (`cm report import`), and verify reachability (`cm verify`) inside an isolated sandbox before recommending code changes.
 
 ---
 
@@ -84,7 +84,7 @@ Never leave `.codemender/config.yaml` at generic defaults when scanning speciali
 
 ---
 
-## Phase 2: 2-Tier Exploit PoC Verification (`cm verify`)
+## Phase 2: 2-Tier Reachability & Test Verification (`cm verify`)
 
 Before recommending any code change, validate findings using the **2-Tier Verification Strategy**:
 
@@ -102,8 +102,8 @@ fi
 # Tier 1 (Default — Fast Semantic & Dataflow Verification, 15-25s; avoids 15-min sandbox hangs):
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 
-# Tier 2 (On-Demand — Full Dynamic Sandboxed PoC Execution inside OS exebox):
-# bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> -c "Construct minimal PoC to trigger exploit" --no-reset --bypass-warning -y
+# Tier 2 (On-Demand — Dynamic Test Verification inside OS exebox):
+# bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> -c "Construct dynamic verification test harness" --no-reset --bypass-warning -y
 
 # Restore tracked stash if created in this run
 if [ -n "${CM_STASH_MSG}" ]; then
