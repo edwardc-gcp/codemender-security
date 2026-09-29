@@ -36,24 +36,51 @@ done
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "${PROJECT_ROOT}"
 
-# 1. Dynamically probe outer build hard gate if not explicitly provided
-if [ -z "${OUTER_BUILD_CMD}" ]; then
-  if [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || compgen -G "*.py" >/dev/null; then
-    if command -v pytest >/dev/null 2>&1 && pytest --collect-only >/dev/null 2>&1; then
-      OUTER_BUILD_CMD="pytest"
-    else
-      OUTER_BUILD_CMD="python3 -m py_compile \$(git ls-files '*.py')"
+# 1. Strategy Pipeline for polyglot outer build hard gate detection
+probe_config_file() {
+  [ -f ".codemender/config.yaml" ] && sed -n 's/^[[:space:]]*command:[[:space:]]*["'"'"']\(.*\)["'"'"'][[:space:]]*$/\1/p' .codemender/config.yaml | head -n 1
+}
+
+probe_node() {
+  [ -f "package.json" ] || return 1
+  [ -f "tsconfig.json" ] && command -v npx >/dev/null 2>&1 && echo "npx tsc --noEmit" && return 0
+  grep -q '"test":' package.json 2>/dev/null && [ -d "node_modules" ] && echo "npm test" && return 0
+  echo "for f in \$(git ls-files '*.js' '*.mjs' '*.cjs'); do node --check \"\$f\"; done"
+}
+
+probe_python() {
+  { [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || compgen -G "*.py" >/dev/null; } || return 1
+  command -v pytest >/dev/null 2>&1 && pytest --collect-only >/dev/null 2>&1 && echo "pytest" && return 0
+  echo "python3 -m py_compile \$(git ls-files '*.py')"
+}
+
+probe_golang() {
+  [ -f "go.mod" ] && echo "go test ./..."
+}
+
+probe_rust() {
+  [ -f "Cargo.toml" ] && echo "cargo check"
+}
+
+probe_jvm() {
+  [ -f "pom.xml" ] && echo "mvn test-compile -q" && return 0
+  { [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; } && echo "./gradlew testClasses --quiet" && return 0
+  return 1
+}
+
+detect_outer_build_cmd() {
+  local probers=(probe_config_file probe_node probe_python probe_golang probe_rust probe_jvm)
+  for prober in "${probers[@]}"; do
+    local detected_cmd
+    if detected_cmd="$($prober 2>/dev/null)" && [ -n "${detected_cmd}" ]; then
+      echo "${detected_cmd}"
+      return 0
     fi
-  elif [ -f "package.json" ]; then
-    OUTER_BUILD_CMD="for f in \$(git ls-files '*.js' '*.mjs' '*.cjs'); do node --check \"\$f\"; done"
-  elif [ -f "go.mod" ]; then
-    OUTER_BUILD_CMD="go test ./..."
-  elif [ -f "Cargo.toml" ]; then
-    OUTER_BUILD_CMD="cargo check"
-  else
-    OUTER_BUILD_CMD="true"
-  fi
-fi
+  done
+  echo "true"
+}
+
+OUTER_BUILD_CMD="${OUTER_BUILD_CMD:-$(detect_outer_build_cmd)}"
 
 # 2. Tracked Pre-Fix Stash (P1-4 safe stash lifecycle)
 CM_STASH_MSG=""

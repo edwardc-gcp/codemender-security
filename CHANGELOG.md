@@ -2,6 +2,20 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.2.0] - 2026-09-28
+
+### Architecture & Agent Experience Enhancements
+- **Declarative Strategy Pipeline for Polyglot Build Gates (`cm_remediate_loop.sh`)**:
+  - Replaced imperative `if/elif` chain with an extensible Strategy Pipeline (`probe_config_file`, `probe_node`, `probe_python`, `probe_golang`, `probe_rust`, `probe_jvm`).
+  - Added priority auto-detection of `build.command` from `.codemender/config.yaml`.
+  - Added full TypeScript (`tsconfig.json` $\rightarrow$ `npx tsc --noEmit`) and JVM/Gradle/Maven support.
+- **Diagnostic Environment Health Checker (`scripts/check_env.sh`)**:
+  - Added standalone diagnostic tool checking `cm` version, Google Cloud ADC auth status, active project, and workspace data protection in a structured ASCII summary.
+- **Natural Language Telemetry & Housekeeping**:
+  - Expanded `codemender-audit` with explicit conversational mapping for token diagnostics (`cm stats`), workspace cleanup (`cm clean`), and interactive status tables (`cm report -f table`).
+- **GenAI Vibe Coding Pitfalls Enhancement**:
+  - Added Sequelize named parameterization/replacement binding patterns (`replacements: { ... }`) to `references/vibe_coding_pitfalls.md`.
+
 ## [1.1.0] - 2026-09-22
 
 ### Security & Data-Safety Guardrails

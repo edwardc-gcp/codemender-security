@@ -86,7 +86,9 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Isolates `.codemender/` and `HOME="${PROJECT_ROOT}/.cache"` per repository, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG` (ADC), prevents `.codemender/config.yaml` overwrites, and registers `.codemender/` and `.cache/` in `.git/info/exclude`.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
-  Automates non-destructive `git stash push -u` tracking, dynamic language toolchain detection (`OUTER_BUILD_CMD` hard gate), per-finding `cm fix` synthesis, post-commit `cm find` re-scans, and automatic `git stash pop` restoration.
+  Automates non-destructive `git stash push -u` tracking, declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, post-commit AST line reconciliation, and automatic `git stash pop` restoration.
+- **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
+  Instantly verifies CLI version, Google Cloud ADC authentication status, active project, and workspace data protection in a structured ASCII summary.
 
 ---
 

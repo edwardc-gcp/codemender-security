@@ -115,17 +115,30 @@ fi
 
 ---
 
-## Phase 3: Reporting & SARIF Export (`cm report`)
+## Phase 3: Reporting, Telemetry & Housekeeping
 
 ```bash
 PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
 [ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-# Export SARIF v2.1.0 for GitHub Code Scanning / Google Cloud SCC
+# 1. Export SARIF v2.1.0 for GitHub Code Scanning / Google Cloud SCC
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
 
-# Query actionable findings (OPEN / REOPENED) via JSON array output
+# 2. Query actionable findings (OPEN / REOPENED) via JSON or interactive Table
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f json
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f table
+
+# 3. Token Telemetry & Context Caching Diagnostics (when user asks for token stats)
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" stats
+
+# 4. Workspace Housekeeping & Cache Purging (when user asks to clean temporary artifacts)
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" clean
+```
+
+### Environment Diagnostic Health Check
+When the user asks to verify the CodeMender plugin environment, credentials, or toolchain readiness:
+```bash
+bash "${PLUGIN_DIR}/scripts/check_env.sh"
 ```
 
 Once findings are verified, transition to **`codemender-remediate`** ([skills/codemender-remediate/SKILL.md](../codemender-remediate/SKILL.md)) to generate verified patches.
