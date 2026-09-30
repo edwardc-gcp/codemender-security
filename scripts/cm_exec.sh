@@ -46,7 +46,7 @@ if [ "${1:-}" = "init" ]; then
   fi
 fi
 
-# 3. Auto-inject --bypass-warning for stateful subcommands (verify, fix) to prevent interactive stdin hangs
+# 3. Auto-inject flags for stateful and rolling display subcommands
 EXTRA_ARGS=()
 if [ "${1:-}" = "verify" ] || [ "${1:-}" = "fix" ]; then
   HAS_BYPASS=false
@@ -58,6 +58,19 @@ if [ "${1:-}" = "verify" ] || [ "${1:-}" = "fix" ]; then
   done
   if [ "$HAS_BYPASS" = false ]; then
     EXTRA_ARGS+=("--bypass-warning")
+  fi
+fi
+
+if [ "${1:-}" = "find" ] || [ "${1:-}" = "verify" ] || [ "${1:-}" = "fix" ]; then
+  HAS_COMPACT_OR_VERBOSE=false
+  for arg in "$@"; do
+    if [ "$arg" = "--compact" ] || [ "$arg" = "-v" ] || [ "$arg" = "--verbose" ]; then
+      HAS_COMPACT_OR_VERBOSE=true
+      break
+    fi
+  done
+  if [ "$HAS_COMPACT_OR_VERBOSE" = false ]; then
+    EXTRA_ARGS+=("--compact")
   fi
 fi
 
