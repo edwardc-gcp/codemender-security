@@ -19,6 +19,8 @@ if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
 fi
 
 HOME="${PROJECT_ROOT}" \
+CM_HOME="${PROJECT_ROOT}/.codemender" \
+CM_LOCATION="${CM_LOCATION:-global}" \
 GIT_CONFIG_GLOBAL="${REAL_HOME}/.gitconfig" \
 CLOUDSDK_CONFIG="${REAL_HOME}/.config/gcloud" \
 GOOGLE_APPLICATION_CREDENTIALS="${ADC_PATH}" \
