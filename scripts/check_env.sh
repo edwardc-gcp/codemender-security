@@ -18,6 +18,18 @@ if command -v cm >/dev/null 2>&1; then
   CM_PATH="$(command -v cm)"
   CM_VER="$(cm --version 2>/dev/null || cm -v 2>/dev/null || echo "0.8.0+")"
   CM_STATUS="✔ Installed (${CM_PATH})"
+
+  # Non-blocking check against official stable manifest (1.5s timeout)
+  MANIFEST_URL="https://artifactregistry.googleapis.com/download/v1/projects/cmoc-prod/locations/us/repositories/codemender-cli-production/files/cm%3Astable%3Astable.json:download?alt=media"
+  REMOTE_VER="$(curl -m 1.5 -fsSL "${MANIFEST_URL}" 2>/dev/null | grep -o '"version": "[^"]*"' | cut -d'"' -f4 || true)"
+  CURR_SEMVER="$(echo "${CM_VER}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+  if [ -n "${REMOTE_VER}" ] && [ -n "${CURR_SEMVER}" ]; then
+    if [ "${CURR_SEMVER}" != "${REMOTE_VER}" ]; then
+      CM_VER="${CM_VER} ⚠️ (Update available: ${REMOTE_VER})"
+    else
+      CM_VER="${CM_VER} (Latest)"
+    fi
+  fi
 fi
 
 # 2. Check Google Cloud ADC Credentials & Project
