@@ -79,7 +79,7 @@ fi
 # Rule 3: Block unscoped stateful `cm` invocations (`find`, `verify`, `fix`, `init`, `vcs`, `report import`)
 # Catches prefixes like `env cm find`, `timeout 60 cm find`, etc., while allowing `cm version`, `cm --help`, `cm report -f json`.
 if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|report[[:space:]]+import)([[:space:]]|$)'; then
-  if [[ "${CMD}" != *"cm_exec.sh"* && "${CMD}" != *"cm_remediate_loop.sh"* ]] && ! printf '%s\n' "${CMD}" | grep -qE '(^|[[:space:]])HOME='; then
+  if [[ "${CMD}" != *"cm_exec.sh"* && "${CMD}" != *"cm_remediate_loop.sh"* ]] && ! printf '%s\n' "${CMD}" | grep -qE '(^|[[:space:]])(HOME|CM_HOME)='; then
     SUB="$(printf '%s\n' "${CMD}" | sed -nE 's/.*(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|report[[:space:]]+import).*/\2/p' | head -n 1)"
     REASON="Blocked unscoped 'cm ${SUB}' invocation (would pollute ~/.codemender or risk git clean -fd). Always invoke via scripts/cm_exec.sh ${SUB} [args...] or scripts/cm_remediate_loop.sh."
     emit_response "deny" "${REASON}"
