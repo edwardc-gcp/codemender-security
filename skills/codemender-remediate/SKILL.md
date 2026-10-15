@@ -19,7 +19,7 @@ To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` c
 1. **Stateless Workspace & `.git/info/exclude` Shield**: Scopes `HOME="${PROJECT_ROOT}"`, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`, and excludes `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, and `*.sarif`.
 2. **Tracked Pre-Fix Stash (`CM_STASH_MSG`)**: Only stashes if dirty user files exist, records the exact `CM_STASH_MSG` timestamp, and uses an `EXIT` trap to `git stash pop "${STASH_REF}"` for that specific stash entry—never popping unrelated user stashes (`stash@{0}`).
 3. **Outer-Shell Build Hard Gate (`OUTER_BUILD_CMD`)**: Dynamically probes `pytest`, `python3 -m py_compile`, `node --check`, `go test`, or `cargo check`. If `cm fix` produces a patch that fails the outer build gate, it immediately reverts (`git checkout HEAD -- . && git clean -fd`).
-4. **Pathspec-Filtered `git add -A` & Per-Commit AST Reconciliation**: Stages newly created security helper files while excluding `:!.codemender`, `:!.cache`, `:!.npm`, `:!.config`, and `:!*.sarif`, and runs `cm find . -y` inside the loop after every commit so subsequent patches use updated line numbers.
+4. **Pathspec-Filtered `git add -A` & Differential AST Reconciliation**: Stages newly created security helper files while excluding `:!.codemender`, `:!.cache`, `:!.npm`, `:!.config`, and `:!*.sarif`, and runs `cm find . --diff=HEAD~1 -y` inside the loop after every commit so subsequent patches reconcile modified files and 1-hop callers without rescanning the entire repository.
 
 ---
 
@@ -50,7 +50,7 @@ bash "${PLUGIN_DIR}/scripts/cm_remediate_loop.sh" \
 ## Phase 2: Post-Fix Re-Verification & Rollback (`cm vcs`)
 
 ### 1. Confirm Remediation Status (`FIXED` vs. `REOPENED`)
-After `cm_remediate_loop.sh` completes its `cm find . -y` AST reconciliation, inspect the report:
+After `cm_remediate_loop.sh` completes its `cm find . --diff=HEAD~1 -y` AST reconciliation, inspect the report:
 ```bash
 PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
 [ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"

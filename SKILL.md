@@ -16,7 +16,7 @@ To conserve context tokens and prevent stateless subshell bugs, delegate to the 
   * **Context-Aware Remediation**: Read [skills/codemender-remediate/SKILL.md](skills/codemender-remediate/SKILL.md) for patch generation (`cm fix`), tiered build hard gates, and rollback (`cm vcs`).
 * **Executable Helpers** (Always use these instead of raw `cm` calls):
   * **[scripts/cm_exec.sh](scripts/cm_exec.sh)**: Stateless workspace wrapper that dynamically computes `PROJECT_ROOT` and `REAL_HOME`, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`, blocks `cm init -y`, and populates `.git/info/exclude` (`.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, `*.sarif`).
-  * **[scripts/cm_remediate_loop.sh](scripts/cm_remediate_loop.sh)**: Atomic multi-vulnerability remediation runner with tracked `CM_STASH_MSG` pre-stash/restore, dynamic `OUTER_BUILD_CMD` hard gate, pathspec-filtered `git add -A`, and per-commit AST line-number reconciliation (`cm find . -y`).
+  * **[scripts/cm_remediate_loop.sh](scripts/cm_remediate_loop.sh)**: Atomic multi-vulnerability remediation runner with tracked `CM_STASH_MSG` pre-stash/restore, dynamic `OUTER_BUILD_CMD` hard gate, pathspec-filtered `git add -A`, and per-commit differential AST reconciliation (`cm find . --diff=HEAD~1 -y`).
 
 ---
 

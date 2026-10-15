@@ -179,8 +179,12 @@ for fid in "${TARGET_FIDS[@]}"; do
     if ! git diff --cached --quiet; then
       git commit -m "security(cm): fix ${fid}"
       echo "✅ Committed verified fix for ${fid}"
-      echo "🔍 Reconciling AST line numbers via cm find before next finding..."
-      "${CM_EXEC}" find . -y || true
+      echo "🔍 Reconciling AST line numbers via differential cm find before next finding..."
+      if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+        "${CM_EXEC}" find . --diff=HEAD~1 -y || true
+      else
+        "${CM_EXEC}" find . -y || true
+      fi
     else
       echo "ℹ️  No file modifications produced for ${fid}."
     fi
