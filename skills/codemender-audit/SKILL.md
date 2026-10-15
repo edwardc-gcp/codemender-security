@@ -52,17 +52,20 @@ bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find ./src/auth/ -y -c "Focus on authent
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . -y
 ```
 
-### Workflow B: Fast PR / Differential Scan (<15 Seconds)
-When reviewing uncommitted work or a feature branch:
+### Workflow B: Fast PR / Differential Scan (`cm find --diff`)
+When reviewing uncommitted work, staged commits, or a feature branch, use CodeMender's native differential scanner (which automatically traces 1-hop impacted callers/callees, detects removed security controls, and aggregates workers into a single unified session):
 ```bash
 PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
 [ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-MODIFIED_DIRS=$(git diff --name-only HEAD | xargs -n1 dirname 2>/dev/null | sort -u | tr '\n' ' ')
-if [ -n "${MODIFIED_DIRS}" ]; then
-  # shellcheck disable=SC2086
-  bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find ${MODIFIED_DIRS} -y -c "Audit recent uncommitted diff changes for security regressions"
-fi
+# Scan uncommitted working-tree changes + 1-hop impacted callers:
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff -y -c "Audit recent uncommitted diff changes for security regressions"
+
+# Scan only staged pre-commit changes:
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff --staged -y
+
+# CI/CD PR gate against base branch:
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff=origin/main --fail-on=CRITICAL,HIGH -y
 ```
 
 ### Workflow C: Ingesting External Scanner Reports (`cm report import`)
@@ -77,8 +80,8 @@ bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report import -f findings.sarif
 
 ### Workflow D: Surgical Config Tuning (`.codemender/config.yaml`)
 Never leave `.codemender/config.yaml` at generic defaults when scanning specialized repositories (see [references/config_schema.md](references/config_schema.md)):
-1. **Scan Latency >60s**: Add `dist`, `build`, `coverage`, `migrations`, `docs`, `*.min.js` to `scan.exclude_dirs`.
-2. **Non-Standard Extensions**: Add `.mjs`, `.cjs`, `.vue`, `.svelte`, `.kt`, `.swift`, `.rb`, `.php` to `scan.extensions.include` (add `.yaml`, `.yml`, `.tf`, `.sh` only when explicitly auditing IaC/deployment manifests; never globally add `.json`).
+1. **Scan Latency >60s**: Add `coverage`, `migrations`, `docs`, `*.min.js` to `scan.exclude_dirs` (`node_modules`, `vendor`, `dist`, `bin`, `target`, `obj`, `build`, `.gradle` are excluded by default in `v0.15.0+`).
+2. **Non-Standard Extensions**: Add `.vue`, `.svelte`, `.swift` to `scan.extensions.include` (add `.yaml`, `.yml`, `.sh` only when explicitly auditing deployment manifests; `.tf` and `.hcl` are included by default in `v0.15.0+`; never globally add `.json`).
 3. **Polyglot / Monorepo**: Populate `project_paths` with active microservice roots (e.g., `["./services/auth", "./services/billing"]`).
 4. **Compiler Search Loop (>60s inside `exebox`)**: When `cm` wastes turns searching for compilers inside `exebox`, set `build.command: "true"` for scanning and rely on outer-shell verification.
 
@@ -86,7 +89,7 @@ Never leave `.codemender/config.yaml` at generic defaults when scanning speciali
 
 ## Phase 2: 2-Tier Reachability & Test Verification (`cm verify`)
 
-Before recommending any code change, validate findings using the **2-Tier Verification Strategy**:
+Before recommending any code change, validate findings using the **2-Tier Verification Strategy** (`cm verify` automatically locates code that moved since `cm find` and updates finding locations):
 
 ### 1. Pre-Verify Tracked Stash Check
 ```bash
@@ -124,15 +127,16 @@ fi
 PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
 [ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
 
-# 1. Export SARIF v2.1.0 for GitHub Code Scanning / Google Cloud SCC
+# 1. Export SARIF v2.1.0 (standardized rule descriptors & repo-relative paths) for GitHub Code Scanning / Google Cloud SCC
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
 
 # 2. Query actionable findings (OPEN / REOPENED) via JSON or interactive Table
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f json
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f table
 
-# 3. Token Telemetry & Context Caching Diagnostics (when user asks for token stats)
+# 3. Token Telemetry, Context Caching & Model Invocation Metrics (when user asks for token/model stats)
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" stats
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" stats --json
 
 # 4. Workspace Housekeeping & Cache Purging (when user asks to clean temporary artifacts)
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" clean

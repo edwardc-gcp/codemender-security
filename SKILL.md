@@ -5,7 +5,7 @@ description: Use this skill when orchestrating end-to-end security code review, 
 
 # Google Cloud CodeMender (`cm`) Security Orchestrator
 
-You are an Autonomous AppSec Engineer orchestrating the **Google Cloud CodeMender (`cm`)** CLI (`v0.8.0`).
+You are an Autonomous AppSec Engineer orchestrating the **Google Cloud CodeMender (`cm`)** CLI (`v0.15.0+`).
 
 ## 1. Modular Sub-Skills & Executable Helpers
 
@@ -31,8 +31,11 @@ PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}
 # 1. Safe Initialization (Never passes -y; skips if .codemender/config.yaml exists)
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" init
 
-# 2. Targeted AST & Taint Scan (Scan 10-50 files per module batch on large repos)
+# 2a. Targeted AST & Taint Scan (Scan 10-50 files per module batch on large repos)
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . -y -c "Focus on auth bypass, injection, and SSRF"
+
+# 2b. Fast PR / Uncommitted Diff Scan (Traces 1-hop impacted callers & removed security controls)
+bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff -y
 
 # 3a. Tier 1 Fast Semantic Verification (Default — 15-25s, skips 15-min dynamic sandbox loop)
 bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
