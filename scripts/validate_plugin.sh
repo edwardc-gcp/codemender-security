@@ -43,13 +43,16 @@ for minimal in (False, True):
     assert run_hook("cm init -y", minimal)["decision"] == "deny", "Expected deny on cm init -y"
     assert run_hook("cm verify 123 --unrestricted", minimal)["decision"] == "force_ask", "Expected force_ask on --unrestricted"
     assert run_hook("bash scripts/install_cm.sh", minimal)["decision"] == "force_ask", "Expected force_ask on install_cm.sh"
+    assert run_hook("cm update", minimal)["decision"] == "force_ask", "Expected force_ask on cm update"
     assert run_hook("cm find . -y", minimal)["decision"] == "deny", "Expected deny on unscoped cm find"
+    assert run_hook("cm build --force", minimal)["decision"] == "deny", "Expected deny on unscoped cm build"
     assert run_hook("timeout 60 cm find . -y", minimal)["decision"] == "deny", "Expected deny on prefixed timeout cm find"
     assert run_hook("cm report import -f findings.sarif", minimal)["decision"] == "deny", "Expected deny on unscoped cm report import"
     assert run_hook("bash scripts/cm_exec.sh find . -y", minimal)["decision"] == "allow", "Expected allow on cm_exec.sh find"
+    assert run_hook("bash scripts/cm_exec.sh build --force", minimal)["decision"] == "allow", "Expected allow on cm_exec.sh build"
     assert run_hook("cm version", minimal)["decision"] == "allow", "Expected allow on read-only cm version"
     assert run_hook("cm report -f json", minimal)["decision"] == "allow", "Expected allow on read-only cm report -f json"
-print("✅ PreToolUse shell hook unit tests passed (18/18 assertions across standard & no-Python/no-jq environments)")
+print("✅ PreToolUse shell hook unit tests passed (24/24 assertions across standard & no-Python/no-jq environments)")
 '
 
 # 3. JSON Array Parser Verification (Matches cm report -f json v0.8.0 schema across Python & pure awk)

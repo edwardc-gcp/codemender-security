@@ -69,18 +69,18 @@ if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])cm([[:space:]].*)?[[:spa
   exit 0
 fi
 
-# Rule 2b: Force interactive user confirmation for `install_cm.sh`
-if [[ "${CMD}" == *"install_cm.sh"* ]]; then
-  REASON="Binary installation detected (install_cm.sh). Explicit user permission is required before downloading or installing the CodeMender binary."
+# Rule 2b: Force interactive user confirmation for `install_cm.sh` or `cm update` (except `--help` / `-h`)
+if [[ "${CMD}" == *"install_cm.sh"* ]] || (printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+update([[:space:]]|$)' && ! printf '%s\n' "${CMD}" | grep -qE '[[:space:]](-h|--help)([[:space:]]|$)'); then
+  REASON="Binary installation or update detected (install_cm.sh / cm update). Explicit user permission is required before downloading or updating the CodeMender binary."
   emit_response "force_ask" "${REASON}"
   exit 0
 fi
 
-# Rule 3: Block unscoped stateful `cm` invocations (`find`, `verify`, `fix`, `init`, `vcs`, `report import`)
-# Catches prefixes like `env cm find`, `timeout 60 cm find`, etc., while allowing `cm version`, `cm --help`, `cm report -f json`.
-if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|report[[:space:]]+import)([[:space:]]|$)'; then
+# Rule 3: Block unscoped stateful `cm` invocations (`find`, `verify`, `fix`, `init`, `vcs`, `build`, `report import`)
+# Catches prefixes like `env cm find`, `timeout 60 cm find`, etc., while allowing `cm version`, `cm --help`, `cm <subcmd> --help`, `cm report -f json`.
+if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|build|report[[:space:]]+import)([[:space:]]|$)' && ! printf '%s\n' "${CMD}" | grep -qE '[[:space:]](-h|--help)([[:space:]]|$)'; then
   if [[ "${CMD}" != *"cm_exec.sh"* && "${CMD}" != *"cm_remediate_loop.sh"* ]] && ! printf '%s\n' "${CMD}" | grep -qE '(^|[[:space:]])(HOME|CM_HOME)='; then
-    SUB="$(printf '%s\n' "${CMD}" | sed -nE 's/.*(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|report[[:space:]]+import).*/\2/p' | head -n 1)"
+    SUB="$(printf '%s\n' "${CMD}" | sed -nE 's/.*(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|build|report[[:space:]]+import).*/\2/p' | head -n 1)"
     REASON="Blocked unscoped 'cm ${SUB}' invocation (would pollute ~/.codemender or risk git clean -fd). Always invoke via scripts/cm_exec.sh ${SUB} [args...] or scripts/cm_remediate_loop.sh."
     emit_response "deny" "${REASON}"
     exit 0
