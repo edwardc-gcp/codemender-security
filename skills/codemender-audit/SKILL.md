@@ -107,6 +107,11 @@ Never leave `.codemender/config.yaml` at generic defaults when scanning speciali
 2. **Non-Standard Extensions**: Add `.vue`, `.svelte`, `.swift` to `scan.extensions.include` (add `.yaml`, `.yml`, `.sh` only when explicitly auditing deployment manifests; `.tf`, `.hcl`, and C++ headers such as `.hh` and `.hxx` are included by default in `v0.16.0`; never globally add `.json`).
 3. **Polyglot / Monorepo**: Populate `project_paths` with active microservice roots (e.g., `["./services/auth", "./services/billing"]`).
 4. **Compiler Search Loop (>60s inside `exebox`)**: When `cm` wastes turns searching for compilers inside `exebox`, set `build.command: "true"` for scanning and rely on outer-shell verification.
+5. **Check Every Edit**: cm 0.16.0 doesn't warn about unknown or misspelled keys, and the web docs use a few names that differ from the `cm init` template (such as `human_confirmation`). After editing the config, run both checks:
+   ```bash
+   bash "<skill-dir>/scripts/cm_config_check.sh"        # unknown keys, invalid values, risky settings
+   bash "<skill-dir>/scripts/cm_exec.sh" init --verify  # YAML syntax, team_id, build command, VCS
+   ```
 
 ---
 

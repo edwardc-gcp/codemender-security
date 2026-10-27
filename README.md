@@ -106,6 +106,8 @@ Before using the plugin, ensure your environment meets the following requirement
   Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, and a re-scan of the change after every fix to pick the next target and catch regressions.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
   Checks that `cm` is on your PATH and at version 0.16.0 or later, runs the side-effect-free `cm health` check (credentials, project, endpoint reachability, and authorization), and checks workspace data protection, with a fix-it hint for each problem.
+- **[`cm_config_check.sh`](./scripts/cm_config_check.sh)** *(Config Checker)*:
+  CodeMender doesn't warn about unknown or misspelled `config.yaml` keys. This check compares the config with the documented keys (suggesting the right name), and flags invalid values and risky settings such as a disabled sandbox.
 
 ---
 
