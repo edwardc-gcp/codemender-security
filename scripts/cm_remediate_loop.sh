@@ -83,7 +83,7 @@ done
 for arg in ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; do
   case "${arg}" in
     --export|--export=*)
-      echo "❌ --export exports a patch from an earlier session; run it on its own: cm_exec.sh fix --export <session-id>" >&2
+      echo "❌ --export isn't a fix-run flag (and cm 0.16.0 doesn't implement it); review generated patches with: cm_exec.sh report --patches" >&2
       exit 1
       ;;
   esac
