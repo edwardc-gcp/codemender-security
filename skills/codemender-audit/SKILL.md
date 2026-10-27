@@ -80,30 +80,24 @@ Never leave `.codemender/config.yaml` at generic defaults when scanning speciali
 
 ---
 
-## Phase 2: 2-Tier Reachability & Test Verification (`cm verify`)
+## Phase 2: Optional 2-Tier Exploit Verification (`cm verify`)
 
-Before recommending any code change, validate findings using the **2-Tier Verification Strategy** (`cm verify` automatically locates code that moved since `cm find` and updates finding locations):
+`cm verify` writes and runs a proof-of-concept exploit inside the sandbox (and automatically locates code that moved since `cm find`). It is thorough but expensive: in a cm 0.16.0 test on a small repository, one Tier 1 verification took about 9 minutes and 1.4M input tokens. Treat it as **optional**:
+* **Skip it in the Secure Inner Loop**: for findings in code you just wrote, fix the code and re-run `cm_diff_scan.sh`; a clean re-scan is the confirmation.
+* **Run it** when the user asks for proof of exploitability, before treating a finding as a false positive, or to triage CRITICAL findings in committed code before `cm fix`.
 
-### 1. Pre-Verify Tracked Stash Check
+### 1. Run Verification Without Resets or Stashes
+Always pass `--no-reset`: without it `cm verify` resets the workspace. With it, cm 0.16.0 only writes exploit artifacts under `.exploit/` (and appends `.exploit/` to `.gitignore`), so uncommitted code stays in place. **Never stash before verifying**: a stash hides the very code under test, including the uncommitted findings reported by diff scans.
+
 ```bash
-CM_STASH_MSG=""
-if [ -n "$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.cm_project$|\.exploit/|\.cache/|\.npm/|\.cargo/|\.local/|\.config/|.*\.sarif$)')" ]; then
-  CM_STASH_MSG="cm-pre-verify-backup-$(date +%s)"
-  git stash push -u -m "${CM_STASH_MSG}"
-fi
-
-# Tier 1 (Default — Fast Semantic & Dataflow Verification, 15-25s; avoids 15-min sandbox hangs):
+# Tier 1 (default when verifying): the agent writes and runs the exploit; the final re-run is skipped for high-confidence findings
 bash "<skill-dir>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 
-# Tier 2 (On-Demand — Dynamic Test Verification inside OS exebox):
+# Tier 2 (on demand): also re-runs the exploit script after verification
 # bash "<skill-dir>/scripts/cm_exec.sh" verify <finding-id> -c "Construct dynamic verification test harness" --no-reset --bypass-warning -y
-
-# Restore tracked stash if created in this run
-if [ -n "${CM_STASH_MSG}" ]; then
-  STASH_REF="$(git stash list | grep -F "${CM_STASH_MSG}" | head -n 1 | cut -d: -f1 || true)"
-  [ -n "${STASH_REF}" ] && git stash pop "${STASH_REF}"
-fi
 ```
+
+If `cm verify` appended `.exploit/` to `.gitignore`, revert that edit unless the user wants to keep it: `.git/info/exclude` already ignores `.exploit/`.
 
 ### 2. Strict Sandbox Policy & Triage Integrity
 * **NEVER use `--unrestricted` by default**: `--unrestricted` disables **both** the filesystem sandbox (`exebox`) AND the command policy denylist (`full system access`). Running `cm verify --unrestricted` on untrusted repositories exposes the host to Prompt Injection $\rightarrow$ RCE. Require **explicit per-invocation human approval**.

@@ -18,7 +18,7 @@ bash "<plugin-root>/scripts/cm_exec.sh" find . -y
 # 2b. Fast PR / Uncommitted Diff Scan (Traces 1-hop impacted callers & removed security controls)
 bash "<plugin-root>/scripts/cm_exec.sh" find . --diff -y
 
-# 3. Tier 1 Fast Semantic Verification (15-25s default)
+# 3. Optional Tier 1 exploit verification (minutes and many tokens per finding; never stash first, always --no-reset)
 bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 
 # 4. Ingest Third-Party SARIF / Simple JSON

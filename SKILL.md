@@ -34,10 +34,10 @@ bash "<plugin-root>/scripts/cm_exec.sh" find . -y -c "Focus on auth bypass, inje
 # 2b. Fast PR / Uncommitted Diff Scan (Traces 1-hop impacted callers & removed security controls)
 bash "<plugin-root>/scripts/cm_exec.sh" find . --diff -y
 
-# 3a. Tier 1 Fast Semantic Verification (Default — 15-25s, skips 15-min dynamic sandbox loop)
+# 3a. Optional Tier 1 exploit verification (minutes and many tokens per finding; skip it in the inner loop)
 bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 
-# 3b. Tier 2 Deep Sandboxed PoC Verification (On-Demand inside OS exebox)
+# 3b. Optional Tier 2 verification (also re-runs the exploit after verification)
 bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> -c "Verify exploitability" --no-reset --bypass-warning -y
 
 # 4. Ingest Third-Party SARIF or Simple JSON Findings

@@ -87,7 +87,7 @@ Before using the plugin, ensure your environment meets the following requirement
 
 ### Bundled Skills
 - **[`codemender-audit`](./skills/codemender-audit)**:
-  Full-codebase AST and taint scanning, differential git scanning, external SAST report ingestion (`cm report import -f findings.sarif`), and 2-Tier verification (`cm verify --skip-exploit-verification` for fast semantic verification or sandboxed dynamic PoC execution).
+  Full-codebase AST and taint scanning, differential git scanning, external SAST report ingestion (`cm report import -f findings.sarif`), and optional 2-Tier exploit verification (`cm verify --skip-exploit-verification`, or a full sandboxed PoC re-run).
 - **[`codemender-remediate`](./skills/codemender-remediate)**:
   Domain-guided patch synthesis (`cm fix`), automated regression testing, exploit re-attack validation, and an atomic multi-vulnerability remediation loop with enforced outer-shell build gates and checkpoint-protected uncommitted work.
 
@@ -115,7 +115,7 @@ Once installed, simply prompt your coding agent using natural language. The agen
 > *"I just finished building this full-stack project with AI. Do a comprehensive security audit and hardening pass, verify real vulnerabilities, and remediate them before I deploy."*
 
 1. **Discovery & Scoping**: The agent initializes `.codemender/` and scans the codebase for high-risk vulnerabilities (hardcoded credentials, open CORS, SQL injection, unsanitized inputs).
-2. **2-Tier Verification**: Uses `cm verify --skip-exploit-verification` for fast 15–25s semantic taint verification (or isolated sandbox PoC execution) to eliminate false positives.
+2. **Optional Exploit Verification**: When proof of exploitability matters, uses `cm verify` to write and run a proof-of-concept exploit in the sandbox (expect minutes and many tokens per finding) to eliminate false positives.
 3. **Adaptive Remediation & Hard Gate**: Synthesizes context-aware patches (`cm fix`), validates the build/syntax in the outer shell, and reverts any patch that breaks compilation.
 4. **Checkpoint Protection**: Commits uncommitted work as a checkpoint before `cm fix` (whose workspace reset would otherwise delete it), commits each validated fix, then restores everything as uncommitted changes with the fixes applied (or keeps the commits with `--keep-commits`).
 
