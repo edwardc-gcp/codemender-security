@@ -66,20 +66,33 @@ def run_hook(cmd, use_minimal_env=False):
         out = subprocess.check_output(["bash", "scripts/pre_tool_guard.sh"], input=payload, text=True)
     return json.loads(out)
 
+cases = [
+    ("cm init -y", "deny"),
+    ("cm init --force -y", "deny"),
+    ("cm init -y; ls", "deny"),
+    ("echo cm init docs; bash scripts/cm_exec.sh find . -y", "allow"),
+    ("cm verify 123 --unrestricted", "force_ask"),
+    ("bash /opt/p/skills/codemender-audit/scripts/cm_exec.sh verify 1 --unrestricted", "force_ask"),
+    ("bash scripts/cm_exec.sh fix 1 --sandbox=false -y", "force_ask"),
+    ("cm report -f json; echo --unrestricted", "allow"),
+    ("bash scripts/install_cm.sh", "force_ask"),
+    ("cm update", "force_ask"),
+    ("cm find . -y", "deny"),
+    ("cm build --force", "deny"),
+    ("timeout 60 cm find . -y", "deny"),
+    ("cm report import -f findings.sarif", "deny"),
+    ("bash scripts/cm_exec.sh find . -y", "allow"),
+    ("bash scripts/cm_exec.sh build --force", "allow"),
+    ("cm version", "allow"),
+    ("cm report -f json", "allow"),
+]
+count = 0
 for minimal in (False, True):
-    assert run_hook("cm init -y", minimal)["decision"] == "deny", "Expected deny on cm init -y"
-    assert run_hook("cm verify 123 --unrestricted", minimal)["decision"] == "force_ask", "Expected force_ask on --unrestricted"
-    assert run_hook("bash scripts/install_cm.sh", minimal)["decision"] == "force_ask", "Expected force_ask on install_cm.sh"
-    assert run_hook("cm update", minimal)["decision"] == "force_ask", "Expected force_ask on cm update"
-    assert run_hook("cm find . -y", minimal)["decision"] == "deny", "Expected deny on unscoped cm find"
-    assert run_hook("cm build --force", minimal)["decision"] == "deny", "Expected deny on unscoped cm build"
-    assert run_hook("timeout 60 cm find . -y", minimal)["decision"] == "deny", "Expected deny on prefixed timeout cm find"
-    assert run_hook("cm report import -f findings.sarif", minimal)["decision"] == "deny", "Expected deny on unscoped cm report import"
-    assert run_hook("bash scripts/cm_exec.sh find . -y", minimal)["decision"] == "allow", "Expected allow on cm_exec.sh find"
-    assert run_hook("bash scripts/cm_exec.sh build --force", minimal)["decision"] == "allow", "Expected allow on cm_exec.sh build"
-    assert run_hook("cm version", minimal)["decision"] == "allow", "Expected allow on read-only cm version"
-    assert run_hook("cm report -f json", minimal)["decision"] == "allow", "Expected allow on read-only cm report -f json"
-print("✅ PreToolUse shell hook unit tests passed (24/24 assertions across standard & no-Python/no-jq environments)")
+    for cmd, expected in cases:
+        got = run_hook(cmd, minimal)["decision"]
+        assert got == expected, f"{cmd!r}: expected {expected}, got {got} (minimal={minimal})"
+        count += 1
+print(f"✅ Antigravity PreToolUse hook tests passed ({count}/{count} assertions across standard & no-Python/no-jq environments)")
 '
 
 # 2b. Claude Code / Codex Hook Contract (tool_input.command in, hookSpecificOutput out, silent allow)

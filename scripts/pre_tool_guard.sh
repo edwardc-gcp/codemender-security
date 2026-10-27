@@ -81,15 +81,17 @@ emit_response() {
 }
 
 # Rule 1: Hard block `cm init -y` / `cm init --yes` (Zero Data-Loss Guard)
-if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])cm[[:space:]]+init([[:space:]].*)?[[:space:]](-y|--yes)([[:space:]]|$)'; then
+# Matching stays within one command segment ([^;&|]*), so `cm init` and the `-y` of another chained command never combine.
+if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])cm[[:space:]]+init([[:space:]][^;&|]*)?[[:space:]](-y|--yes)([[:space:]]|[;&|]|$)'; then
   REASON="Blocked by codemender-security guardrail: Never pass -y or --yes to 'cm init' as it overwrites custom .codemender/config.yaml. Use scripts/cm_exec.sh init instead."
   emit_response "deny" "${REASON}"
   exit 0
 fi
 
-# Rule 2a: Force interactive user confirmation for `--unrestricted` (RCE hazard)
-if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])cm([[:space:]].*)?[[:space:]]--unrestricted([[:space:]]|$)'; then
-  REASON="CRITICAL SECURITY WARNING: 'cm --unrestricted' disables both the filesystem sandbox and command denylist (Prompt Injection -> RCE risk). Explicit human confirmation is required."
+# Rule 2a: Force interactive user confirmation when the sandbox is disabled (`--unrestricted` or `--sandbox=false`),
+# whether cm is called directly or through the plugin wrappers (RCE hazard)
+if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_-])(cm|cm_exec\.sh|cm_remediate_loop\.sh)([[:space:]][^;&|]*)?[[:space:]](--unrestricted|--sandbox(=|[[:space:]]+)(false|0))([[:space:]]|[;&|]|$)'; then
+  REASON="CRITICAL SECURITY WARNING: '--unrestricted' / '--sandbox=false' disables the CodeMender sandbox (Prompt Injection -> RCE risk; cm fix workspace resets can also delete uncommitted work). Explicit human confirmation is required."
   emit_response "force_ask" "${REASON}"
   exit 0
 fi
