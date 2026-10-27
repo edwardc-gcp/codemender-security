@@ -2,6 +2,29 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.4.0] - 2026-10-27
+
+Requires CodeMender CLI 0.16.0 or later.
+
+### Full CodeMender 0.16.0 Coverage
+- **Complete references**: `cli_reference.md` now covers every public `cm` command and flag (with defaults and when to use each), global flags, environment variables, models and their fallback, files under `CM_HOME`, runtime limits, exit codes, and common messages. `config_schema.md` lists every documented config key with its type, default, and effect.
+- **Observed behavior**:
+  - `cm` doesn't warn about unknown config keys.
+  - `cm fix --export` isn't implemented.
+  - `cm report --status` rejects `VERIFIED`.
+  - The `--architecture` example in `cm verify --help` is an unknown flag.
+- **Flag playbooks**: The audit and remediate skills map common situations to the right flags and commands.
+
+### Using Flags and Config
+- `cm_diff_scan.sh` and `cm_remediate_loop.sh` pass extra flags after `--` to `cm find` and `cm fix`. The scanner refuses the flags it sets itself and the sandbox flags.
+- New `cm_config_check.sh` reports undocumented keys (with the right name), invalid values, and risky settings such as a disabled sandbox.
+- `cm_exec.sh init --verify` now runs even when the config exists.
+- `cm_diff_scan.sh` treats scans with failed file jobs (INCOMPLETE) as errors instead of clean results.
+
+### Safety Guard
+- Bare `cm` matches only in command position. Commit messages and `echo` text that mention a `cm` subcommand no longer trigger the guard, while `/usr/local/bin/cm`, `cd app && cm ...`, and `$(cm ...)` are still caught.
+- Sandbox flags passed through `cm_diff_scan.sh` require consent, and the safety rule now also covers `sandbox.enabled: false`.
+
 ## [1.3.0] - 2026-10-27
 
 Requires CodeMender CLI 0.16.0 or later.
@@ -29,7 +52,7 @@ Requires CodeMender CLI 0.16.0 or later.
 ### Safety Guard & Environment
 - Consent rules stay within one shell command and also cover `--sandbox=false`, wrapper calls, `cm build`, `cm update`, and `cm_git_hook.sh install`.
 - `check_env.sh` checks access with the side-effect-free `cm health` (credentials, config, reachability, authorization), detects `cm` installed off `PATH`, and requires 0.16.0 or later. `install_cm.sh` verifies the install with `cm health` instead of `cm init --verify`.
-- `cm_exec.sh` sets `CM_HOME` and `CM_LOCATION`, forwards credentials more robustly, and adds `--compact` and `--bypass-warning` automatically.
+- `cm_exec.sh` sets `CM_HOME`, forwards credentials more robustly, and adds `--compact` and `--bypass-warning` automatically.
 
 ### Documentation & Tests
 - Aligned the CLI reference, config schema, and finding format with CodeMender 0.16.0: deep scan default, `--quick`, diff flags and exit codes, global flags, `cm health` exit codes, `cm report` filters, the `VERIFIED` status, finding fingerprints, `info.yaml`, the `cm fix` workspace reset and root-anchored `build.command`, and new `cm init` defaults.
