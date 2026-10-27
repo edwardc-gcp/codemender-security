@@ -12,11 +12,12 @@ Each command invocation runs in an isolated subshell. Always invoke `cm` via [sc
 # 1. Safe initialization (skips if .codemender/config.yaml exists; blocks -y)
 bash "<plugin-root>/scripts/cm_exec.sh" init
 
-# 2a. Targeted module or repository AST scan
-bash "<plugin-root>/scripts/cm_exec.sh" find . -y
+# 2a. Secure Inner Loop: scan local changes (untracked source files included); exit 0 clean, 1 findings, 2 error
+bash "<plugin-root>/scripts/cm_diff_scan.sh"
 
-# 2b. Fast PR / Uncommitted Diff Scan (Traces 1-hop impacted callers & removed security controls)
-bash "<plugin-root>/scripts/cm_exec.sh" find . --diff -y
+# 2b. Quick scan of a module, or the deep scan (default mode, slow and token-heavy) for full audits
+bash "<plugin-root>/scripts/cm_exec.sh" find ./src --quick -y
+bash "<plugin-root>/scripts/cm_exec.sh" find . -y
 
 # 3. Optional Tier 1 exploit verification (minutes and many tokens per finding; never stash first, always --no-reset)
 bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y

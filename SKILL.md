@@ -5,7 +5,7 @@ description: Use this skill when orchestrating end-to-end security code review, 
 
 # Google Cloud CodeMender (`cm`) Security Orchestrator
 
-You are an Autonomous AppSec Engineer orchestrating the **Google Cloud CodeMender (`cm`)** CLI (`v0.15.0+`).
+You are an Autonomous AppSec Engineer orchestrating the **Google Cloud CodeMender (`cm`)** CLI (`v0.16.0+`).
 
 ## 1. Modular Sub-Skills & Executable Helpers
 
@@ -16,23 +16,25 @@ To conserve context tokens and prevent stateless subshell bugs, delegate to the 
   * **Context-Aware Remediation**: Read [skills/codemender-remediate/SKILL.md](skills/codemender-remediate/SKILL.md) for patch generation (`cm fix`), tiered build hard gates, and rollback (`cm vcs`).
 * **Executable Helpers** (Always use these instead of raw `cm` calls):
   * **[scripts/cm_exec.sh](scripts/cm_exec.sh)**: Stateless workspace wrapper that dynamically computes `PROJECT_ROOT` and `REAL_HOME`, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`, blocks `cm init -y`, and populates `.git/info/exclude` (`.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, `*.sarif`).
+  * **[scripts/cm_diff_scan.sh](scripts/cm_diff_scan.sh)**: Local change scanner for `cm find --diff` (working tree, staged, branch, or last-commit scope) that includes untracked source files via a temporary `git add -N`, skips scans when no source file changed, and returns `0` clean / `1` blocking findings / `2` error.
   * **[scripts/cm_remediate_loop.sh](scripts/cm_remediate_loop.sh)**: Atomic multi-vulnerability remediation runner with a checkpoint commit for uncommitted work, dynamic `OUTER_BUILD_CMD` hard gate, autofix-style fix commits (tracked changes plus new source files), and a re-scan of the change after every fix (`cm_diff_scan.sh`).
 
 ---
 
 ## 2. Quick-Start Command Reference (Stateless Subshell Safe)
 
-Each shell tool call (`run_command` in Antigravity, `Bash` in Claude Code and Codex) runs in a fresh subshell. Replace `<plugin-root>` with the absolute path of this plugin's install directory (the directory containing this file) and invoke `cm_exec.sh` or `cm_remediate_loop.sh`; each skill also bundles the same helpers under its own `scripts/` directory:
+Each shell tool call (`run_command` in Antigravity, `Bash` in Claude Code and Codex) runs in a fresh subshell. Replace `<plugin-root>` with the absolute path of this plugin's install directory (the directory containing this file) and invoke `cm_exec.sh`, `cm_diff_scan.sh`, or `cm_remediate_loop.sh`; each skill also bundles the same helpers under its own `scripts/` directory:
 
 ```bash
 # 1. Safe Initialization (Never passes -y; skips if .codemender/config.yaml exists)
 bash "<plugin-root>/scripts/cm_exec.sh" init
 
-# 2a. Targeted AST & Taint Scan (Scan 10-50 files per module batch on large repos)
-bash "<plugin-root>/scripts/cm_exec.sh" find . -y -c "Focus on auth bypass, injection, and SSRF"
+# 2a. Secure Inner Loop: scan local changes (untracked source files included); exit 0 clean, 1 findings, 2 error
+bash "<plugin-root>/scripts/cm_diff_scan.sh"
 
-# 2b. Fast PR / Uncommitted Diff Scan (Traces 1-hop impacted callers & removed security controls)
-bash "<plugin-root>/scripts/cm_exec.sh" find . --diff -y
+# 2b. Quick single-session scan of a module, or the deep scan (default mode, slow and token-heavy) for full audits
+bash "<plugin-root>/scripts/cm_exec.sh" find ./src --quick -y -c "Focus on auth bypass, injection, and SSRF"
+bash "<plugin-root>/scripts/cm_exec.sh" find . -y
 
 # 3a. Optional Tier 1 exploit verification (minutes and many tokens per finding; skip it in the inner loop)
 bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y

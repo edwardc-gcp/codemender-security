@@ -98,6 +98,8 @@ Before using the plugin, ensure your environment meets the following requirement
   Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh` and `--unrestricted` verification. Antigravity loads `hooks.json`; Claude Code and Codex load `hooks/hooks.json`.
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Isolates `.codemender/` and `HOME="${PROJECT_ROOT}/.cache"` per repository, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG` (ADC), prevents `.codemender/config.yaml` overwrites, and registers `.codemender/` and `.cache/` in `.git/info/exclude`.
+- **[`cm_diff_scan.sh`](./scripts/cm_diff_scan.sh)** *(Local Change Scanner)*:
+  Runs CodeMender diff mode on your working tree, staged changes, branch, or last commit; includes untracked source files (which `cm find --diff` alone ignores) through a temporary `git add -N`; skips the scan when no source file changed; and exits `0` clean / `1` blocking findings / `2` error.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
   Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, and a re-scan of the change after every fix to pick the next target and catch regressions.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
@@ -118,6 +120,15 @@ Once installed, simply prompt your coding agent using natural language. The agen
 2. **Optional Exploit Verification**: When proof of exploitability matters, uses `cm verify` to write and run a proof-of-concept exploit in the sandbox (expect minutes and many tokens per finding) to eliminate false positives.
 3. **Adaptive Remediation & Hard Gate**: Synthesizes context-aware patches (`cm fix`), validates the build/syntax in the outer shell, and reverts any patch that breaks compilation.
 4. **Checkpoint Protection**: Commits uncommitted work as a checkpoint before `cm fix` (whose workspace reset would otherwise delete it), commits each validated fix, then restores everything as uncommitted changes with the fixes applied (or keeps the commits with `--keep-commits`).
+
+### Scenario 2: Secure Inner Loop Before You Commit
+*Your agent just wrote or changed code and you want to know whether it is safe to commit:*
+
+> *"Check my changes with CodeMender before I commit."*
+
+1. **Diff Scan**: The agent runs `cm_diff_scan.sh`, which scans only the changed code plus its direct callers and callees (new untracked files included) and skips pre-existing issues in untouched code.
+2. **Fix & Re-Scan**: For each finding the change introduced, the agent fixes the code and re-runs the scan until it exits `0`.
+3. **Commit**: Once the scan is clean, commit as usual.
 
 ---
 

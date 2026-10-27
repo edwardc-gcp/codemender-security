@@ -31,6 +31,10 @@ To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` c
 
 ## Phase 1: Atomic Multi-Vulnerability Remediation (`cm_remediate_loop.sh`)
 
+Choose the remediation strategy first:
+* **Strategy A (default for code you just wrote)**: fix the findings yourself and re-run `cm_diff_scan.sh` until it exits `0` (the `codemender-audit` Secure Inner Loop). It is much faster and cheaper: in a cm 0.16.0 test, one `cm fix` took about 8.5 minutes and 3.2M input tokens, while a diff re-scan took 1–2 minutes.
+* **Strategy B (this loop)**: when the user wants CodeMender-generated, build-validated patches. The loop checkpoints uncommitted work first, so it is safe on uncommitted code.
+
 ### Option A: Remediate the Findings Introduced by the Current Change (Default)
 Fixes what the current change introduces: the user's uncommitted work when there is any, otherwise the branch compared with its upstream (pass `--base origin/main` to choose the base). Add `--strict` to revert fixes that the re-scan does not confirm.
 ```bash

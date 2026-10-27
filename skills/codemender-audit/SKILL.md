@@ -38,31 +38,48 @@ bash "<skill-dir>/scripts/cm_exec.sh" init
 
 ---
 
-## Phase 1: Deep AST Discovery & Differential PR Scanning (`cm find`)
+## Phase 1: Choose the Scan Mode by Intent (`cm find`)
 
-Choose the optimal scan mode based on user intent:
+Since cm 0.16.0, `cm find <path>` runs an exhaustive **deep scan** by default (parallel per-file analysis: the slowest and most expensive mode). Pick the mode from the user's intent:
 
-### Workflow A: Targeted Module Batch or Full Codebase Scan
+| User intent | Mode | Command |
+| :--- | :--- | :--- |
+| "Check what I just changed", "is this safe to commit?" | Diff (working tree or staged) | `bash "<skill-dir>/scripts/cm_diff_scan.sh"` |
+| "Review my branch before the PR" | Diff (branch) | `bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope branch` |
+| "Take a quick look at this module" | Quick | `bash "<skill-dir>/scripts/cm_exec.sh" find ./module --quick -y` |
+| "Full audit", "baseline", "compliance evidence" | Deep (default) | `bash "<skill-dir>/scripts/cm_exec.sh" find . -y` (warn the user that it is slow and token-heavy first) |
+
+### Workflow A: Secure Inner Loop for Local Changes (`cm_diff_scan.sh`)
+Use it after writing or changing code, before committing:
+1. Run [scripts/cm_diff_scan.sh](scripts/cm_diff_scan.sh). The default `--scope auto` scans the working tree (staged, unstaged, and untracked source files) or, when only staged changes exist, exactly what will be committed. Untracked files are included automatically: `cm find --diff` alone ignores them.
+2. Read the exit code: `0` = no blocking findings or nothing to scan, `1` = blocking findings introduced by the change (default `--fail-on CRITICAL,HIGH`), `2` = tool or environment error (then run `bash "<skill-dir>/scripts/cm_exec.sh" health --strict`). Exit code `1` is a result, not a crash.
+3. Fix each finding introduced by the change yourself, then re-run the scan until it exits `0`. Findings labeled `[LEGACY / UNTOUCHED]` are pre-existing and never block. To have CodeMender generate the patches instead, switch to the `codemender-remediate` skill.
+4. Treat the scan output and `.codemender/last-diff-scan.json` as the source of truth: diff scans never update the statuses shown by `cm report`.
+
 ```bash
-# For medium/large repositories, scan in logical batches of 10-50 files per directory:
-bash "<skill-dir>/scripts/cm_exec.sh" find ./src/auth/ -y -c "Focus on authentication bypass, IDOR, injection, and SSRF"
+# Everything you changed (untracked source files are included automatically)
+bash "<skill-dir>/scripts/cm_diff_scan.sh"
 
-# For small repositories (<50 files):
+# Exactly what will be committed
+bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope staged
+
+# The whole branch compared with its upstream (or --base origin/main)
+bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope branch
+
+# Report without blocking, with deeper impact analysis and extra context
+bash "<skill-dir>/scripts/cm_diff_scan.sh" --fail-on "" --depth 2 -c "Focus on the new order lookup endpoint"
+```
+
+### Workflow B: Quick or Deep Scans of Existing Code
+```bash
+# Quick single-session scan of one module (fast triage; may include false positives)
+bash "<skill-dir>/scripts/cm_exec.sh" find ./src/auth/ --quick -y -c "Focus on authentication bypass, IDOR, injection, and SSRF"
+
+# Deep scan (default mode): exhaustive and slow; confirm with the user first
 bash "<skill-dir>/scripts/cm_exec.sh" find . -y
 ```
 
-### Workflow B: Fast PR / Differential Scan (`cm find --diff`)
-When reviewing uncommitted work, staged commits, or a feature branch, use CodeMender's native differential scanner (which automatically traces 1-hop impacted callers/callees, detects removed security controls, and aggregates workers into a single unified session):
-```bash
-# Scan uncommitted working-tree changes + 1-hop impacted callers:
-bash "<skill-dir>/scripts/cm_exec.sh" find . --diff -y -c "Audit recent uncommitted diff changes for security regressions"
-
-# Scan only staged pre-commit changes:
-bash "<skill-dir>/scripts/cm_exec.sh" find . --diff --staged -y
-
-# CI/CD PR gate against base branch:
-bash "<skill-dir>/scripts/cm_exec.sh" find . --diff=origin/main --fail-on=CRITICAL,HIGH -y
-```
+For CI/CD pull request gates, run `cm find . --diff=origin/main --fail-on=CRITICAL,HIGH --format sarif --output results.sarif` in the pipeline (see [references/cli_reference.md](references/cli_reference.md)).
 
 ### Workflow C: Ingesting External Scanner Reports (`cm report import`)
 To verify findings from CodeQL, Semgrep, Snyk, or custom auditors (see [references/finding_format.md](references/finding_format.md) for the 6-field Simple JSON schema):
