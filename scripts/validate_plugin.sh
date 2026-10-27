@@ -194,7 +194,6 @@ print("✅ .agents/plugins/marketplace.json valid (Codex)")
 
 manifests = [
     "plugin.json",
-    "gemini-extension.json",
     ".claude-plugin/plugin.json",
     ".codex-plugin/plugin.json"
 ]
