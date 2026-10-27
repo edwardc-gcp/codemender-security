@@ -2,6 +2,38 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.3.0] - 2026-10-27
+
+Requires CodeMender CLI 0.16.0 or later.
+
+### CodeMender 0.16.0 Diff Mode (Secure Inner Loop)
+- **Local change scanner (`scripts/cm_diff_scan.sh`)**: Runs `cm find --diff` on the working tree, the staged changes, the branch (merge base with `--base` or the upstream), or the last commit, with an `auto` scope that picks the right one.
+  - Includes untracked source files, which `cm find --diff` alone ignores, through a temporary `git add -N` that is always undone (also after a crash).
+  - Skips the scan when no source file changed, and separates findings introduced by the change from `[LEGACY / UNTOUCHED]` ones.
+  - Exits `0` clean, `1` blocking findings, or `2` tool error (cm returns `1` for both findings and errors), and writes `.codemender/last-diff-scan.json` plus a `.meta` file with the scanned path, staged tree, and exit code.
+- **Opt-in git hook (`scripts/cm_git_hook.sh`)**: Installs a pre-commit hook (staged changes) or a pre-push hook (pushed branch). It reuses an earlier staged scan of the same content, never overwrites existing hooks or writes into `core.hooksPath`, and doesn't block when the scan can't run unless `CM_HOOK_STRICT=1`.
+- **Intent-based scan routing**: The audit skill picks diff scans for local changes, quick scans for module triage, and deep scans (the slow 0.16.0 default) only for full audits.
+
+### Remediation & Verification
+- **Checkpoint commit instead of `git stash`**: `cm fix` still resets its workspace in 0.16.0, so `cm_remediate_loop.sh` commits uncommitted work as a `wip(cm)` checkpoint first and restores it as uncommitted changes on exit (`--keep-commits` keeps the commits).
+- **Autofix-style fix commits**: Commits tracked changes and new source files only, and drops CodeMender's own `.gitignore` edits.
+- **Diff-driven targeting**: By default the loop fixes the findings introduced by the current change and re-scans after every fix (`--max-fixes`, `--strict`); explicit IDs and `--all-open` get a regression scan of each fix commit. `VERIFIED` findings count as actionable.
+- **Optional verification**: Removed the pre-verify stash (`--no-reset` keeps uncommitted code in place) and made `cm verify` optional, since one run took about 9 minutes and 1.4M tokens in testing.
+
+### Cross-Agent Support (Antigravity, Claude Code, OpenAI Codex)
+- Each skill bundles its helper scripts (`skills/*/scripts/`, kept in sync by `scripts/sync_skill_scripts.sh`) and uses skill-relative paths, agent-neutral wording, and `compatibility` metadata.
+- Added `hooks/hooks.json` for Claude Code and Codex, plus `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`. Codex can't prompt, so consent rules deny there with an explanation.
+- Removed the Gemini CLI extension manifest (`gemini-extension.json`).
+
+### Safety Guard & Environment
+- Consent rules stay within one shell command and also cover `--sandbox=false`, wrapper calls, `cm build`, `cm update`, and `cm_git_hook.sh install`.
+- `check_env.sh` checks access with the side-effect-free `cm health` (credentials, config, reachability, authorization), detects `cm` installed off `PATH`, and requires 0.16.0 or later. `install_cm.sh` verifies the install with `cm health` instead of `cm init --verify`.
+- `cm_exec.sh` sets `CM_HOME` and `CM_LOCATION`, forwards credentials more robustly, and adds `--compact` and `--bypass-warning` automatically.
+
+### Documentation & Tests
+- Aligned the CLI reference, config schema, and finding format with CodeMender 0.16.0: deep scan default, `--quick`, diff flags and exit codes, global flags, `cm health` exit codes, `cm report` filters, the `VERIFIED` status, finding fingerprints, `info.yaml`, the `cm fix` workspace reset and root-anchored `build.command`, and new `cm init` defaults.
+- Added stub-`cm` regression suites for the diff scanner, the remediation loop, and the git hook, plus Claude Code and Codex guard contract tests, all run by `scripts/validate_plugin.sh`.
+
 ## [1.2.0] - 2026-09-28
 
 ### Architecture & Agent Experience Enhancements
