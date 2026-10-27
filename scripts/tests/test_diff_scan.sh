@@ -140,4 +140,11 @@ for refused in --output=x.json --staged --unrestricted --sandbox=false -y; do
   [ -z "$(find_call)" ] || fail "passthrough: cm should not run with ${refused}"
 done
 
-echo "✅ cm_diff_scan.sh tests passed (10 scenarios with stub cm)"
+# 11. A file job failed (cm marks the scan INCOMPLETE but exits 0): not a clean result, so exit 2 and no reusable meta.
+rm -f .codemender/last-diff-scan.meta
+STUB_FIND_MODE=incomplete scan --scope last-commit
+[ "${RC}" -eq 2 ] || fail "incomplete: expected exit 2, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'INCOMPLETE' || fail "incomplete: missing INCOMPLETE message"
+[ ! -e .codemender/last-diff-scan.meta ] || fail "incomplete: no meta file should be written"
+
+echo "✅ cm_diff_scan.sh tests passed (11 scenarios with stub cm)"

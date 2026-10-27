@@ -18,7 +18,8 @@
 # --format, --output, --fail-on, and -y itself, and refuses sandbox flags (--unrestricted, --sandbox).
 #
 # Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
-#             CRITICAL,HIGH; an empty value only reports), 2 = tool or environment error.
+#             CRITICAL,HIGH; an empty value only reports), 2 = tool or environment error, or an INCOMPLETE scan
+#             (a file job failed, so a clean result doesn't cover every changed file).
 # The JSON report is written to --output (default: .codemender/last-diff-scan.json) with a .meta file next to it.
 
 set -uo pipefail
@@ -35,7 +36,7 @@ OUTPUT=""
 CONTEXT=""
 EXTRA_ARGS=()
 
-usage() { sed -n '2,22p' "$0" | sed -E 's/^# ?//'; }
+usage() { sed -n '2,23p' "$0" | sed -E 's/^# ?//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -266,8 +267,18 @@ fi
 CM_ARGS+=(${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
 
 rm -f "${REPORT}"
-bash "${CM_EXEC}" "${CM_ARGS[@]}"
-RC=$?
+SCAN_LOG="${STATE_DIR}/last-diff-scan.log"
+mkdir -p "${STATE_DIR}"
+bash "${CM_EXEC}" "${CM_ARGS[@]}" 2>&1 | tee "${SCAN_LOG}"
+RC=${PIPESTATUS[0]}
+
+# cm 0.16 marks multi-file scans INCOMPLETE when a file job fails ("N succeeded, M failed"); a clean result then
+# doesn't cover every changed file.
+FAILED_JOBS="$(sed -nE 's/.*\(([0-9]+) succeeded, ([0-9]+) failed\).*/\2/p' "${SCAN_LOG}" 2>/dev/null | tail -n 1)"
+INCOMPLETE=false
+if [ -n "${FAILED_JOBS}" ] && [ "${FAILED_JOBS}" -gt 0 ]; then
+  INCOMPLETE=true
+fi
 
 summarize() {
   [ -s "${REPORT}" ] || return 0
@@ -314,6 +325,12 @@ PY
   fi
 }
 
+if [ "${RC}" -eq 0 ] && [ "${INCOMPLETE}" = true ]; then
+  summarize
+  echo "❌ INCOMPLETE scan: ${FAILED_JOBS} file job(s) failed (the ❌ lines above), so a clean result doesn't cover every changed file. Re-run the scan; if a large file keeps timing out, pass -- --diff-job-timeout 20m, or check: bash \"${CM_EXEC}\" health --strict" >&2
+  exit 2
+fi
+
 if [ "${RC}" -eq 0 ] || { [ "${RC}" -eq 1 ] && [ -s "${REPORT}" ]; }; then
   summarize
   write_meta "${RC}"
@@ -321,6 +338,9 @@ if [ "${RC}" -eq 0 ] || { [ "${RC}" -eq 1 ] && [ -s "${REPORT}" ]; }; then
     echo "✅ No blocking findings in the ${SCOPE} scope (--fail-on=${FAIL_ON:-<report only>}). Report: ${REPORT}"
   else
     echo "🚨 Blocking findings in the ${SCOPE} scope (--fail-on=${FAIL_ON}). Report: ${REPORT}"
+    if [ "${INCOMPLETE}" = true ]; then
+      echo "⚠️  The scan is also INCOMPLETE: ${FAILED_JOBS} file job(s) failed, so re-scan after fixing these findings." >&2
+    fi
   fi
   exit "${RC}"
 fi

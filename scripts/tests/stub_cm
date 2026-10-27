@@ -80,6 +80,13 @@ case "${1:-}" in
         echo "Error: retrieving VCS diff: git diff failed: exit status 128" >&2
         exit 1
         ;;
+      incomplete)
+        # cm 0.16 marks multi-file scans INCOMPLETE when a file job fails, yet still exits 0 when nothing blocks.
+        echo "[1/2] ❌ app.py: start session failed"
+        echo "📊 PR Delta Scan Complete: 2 jobs (1 succeeded, 1 failed) in 1m0s"
+        if [ -n "${out}" ]; then printf '[]\n' > "${out}"; fi
+        exit 0
+        ;;
       dynamic)
         findings=""
         for f in app.py db.py; do
