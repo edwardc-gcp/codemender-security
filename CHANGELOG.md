@@ -2,6 +2,10 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.4.1] - 2026-10-27
+
+- `cm_exec.sh` no longer exports a location variable that the public CodeMender docs don't mention; `cm` uses the global location by default.
+
 ## [1.4.0] - 2026-10-27
 
 Requires CodeMender CLI 0.16.0 or later.
