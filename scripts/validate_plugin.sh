@@ -17,7 +17,7 @@ fi
 echo "✅ Zero hardcoded user paths in repository files"
 
 # 1. Shell Script Syntax Verification
-for sh_file in scripts/install_cm.sh scripts/cm_exec.sh scripts/cm_remediate_loop.sh scripts/pre_tool_guard.sh scripts/check_env.sh scripts/sync_skill_scripts.sh scripts/validate_plugin.sh; do
+for sh_file in scripts/install_cm.sh scripts/cm_exec.sh scripts/cm_diff_scan.sh scripts/cm_remediate_loop.sh scripts/pre_tool_guard.sh scripts/check_env.sh scripts/sync_skill_scripts.sh scripts/validate_plugin.sh; do
   bash -n "${sh_file}"
   chmod +x "${sh_file}"
   echo "✅ Shell syntax & executable bit valid: ${sh_file}"

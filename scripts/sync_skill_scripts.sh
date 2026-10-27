@@ -12,8 +12,8 @@ cd "${REPO_ROOT}"
 
 # Single source of truth: <skill>:<space-separated scripts bundled with that skill>
 SKILL_SCRIPTS=(
-  "codemender-audit:cm_exec.sh check_env.sh install_cm.sh"
-  "codemender-remediate:cm_exec.sh cm_remediate_loop.sh"
+  "codemender-audit:cm_exec.sh cm_diff_scan.sh check_env.sh install_cm.sh"
+  "codemender-remediate:cm_exec.sh cm_diff_scan.sh cm_remediate_loop.sh"
 )
 
 MODE="${1:-sync}"

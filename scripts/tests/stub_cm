@@ -38,6 +38,36 @@ case "${1:-}" in
   --version)
     echo "cm version 0.16.0 (stub)"
     ;;
+  find)
+    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|error; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
+    out=""
+    prev=""
+    for arg in "$@"; do
+      if [ "${prev}" = "--output" ]; then
+        out="${arg}"
+      fi
+      prev="${arg}"
+    done
+    if [ -n "${STUB_DIFF_SNAPSHOT:-}" ]; then
+      git diff --name-only HEAD > "${STUB_DIFF_SNAPSHOT}"
+    fi
+    case "${STUB_FIND_MODE:-clean}" in
+      clean)
+        if [ -n "${out}" ]; then printf '[]\n' > "${out}"; fi
+        exit 0
+        ;;
+      findings)
+        if [ -n "${out}" ]; then
+          printf '[{"finding_id": "f-100abcd", "severity": "HIGH", "status": "OPEN", "title": "SQL injection in app.py", "file_path": "%s/app.py", "start_line": 1, "end_line": 1}, {"finding_id": "f-200abcd", "severity": "HIGH", "status": "OPEN", "title": "[LEGACY / UNTOUCHED] Command injection in legacy.py", "file_path": "%s/legacy.py", "start_line": 3, "end_line": 3}]\n' "$(pwd)" "$(pwd)" > "${out}"
+        fi
+        exit 1
+        ;;
+      error)
+        echo "Error: retrieving VCS diff: git diff failed: exit status 128" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   *)
     exit 0
     ;;
