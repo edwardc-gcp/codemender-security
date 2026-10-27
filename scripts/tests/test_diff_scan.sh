@@ -78,6 +78,7 @@ printf '%s\n' "${OUT}" | grep -q 'introduced or affected by this change: 1' || f
 printf '%s\n' "${OUT}" | grep -q 'f-100abc' || fail "findings: missing introduced finding id"
 printf '%s\n' "${OUT}" | grep -q 'untouched code (never block): 1' || fail "findings: missing legacy summary"
 git status --porcelain | grep -qx '?? app.py' || fail "findings: app.py should be untracked again"
+grep -qx 'exit_code=1' .codemender/last-diff-scan.meta || fail "findings: the meta file should record exit code 1"
 
 # 5. Tool error without a report: exit 2.
 STUB_FIND_MODE=error scan
@@ -93,6 +94,10 @@ STUB_FIND_MODE=clean scan --scope staged
 [ "${RC}" -eq 0 ] || fail "staged: expected exit 0, got ${RC}: ${OUT}"
 find_call | grep -q -- '--diff --staged' || fail "staged: expected --diff --staged"
 ! grep -qx 'app.py' "${STUB_DIFF_SNAPSHOT}" || fail "staged: untracked files must not be registered"
+# The meta file identifies the scanned content, so the git hook can reuse the result.
+for line in 'scope=staged' 'path=.' "head=$(git rev-parse HEAD)" "tree=$(git write-tree)" 'fail_on=CRITICAL,HIGH' 'exit_code=0'; do
+  grep -qxF "${line}" .codemender/last-diff-scan.meta || fail "staged: the meta file should contain ${line}"
+done
 
 # 7. Auto scope picks staged when only staged changes exist.
 new_repo auto_staged

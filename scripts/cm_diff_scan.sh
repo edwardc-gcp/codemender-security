@@ -181,9 +181,20 @@ changed_files() {
   esac
 }
 
+# The .meta file lets callers (such as the git hook) reuse a result: for the staged scope it records the staged tree, so
+# the same HEAD, tree, path, and --fail-on mean the same scan.
+TARGET_REL="$(git -C "${TARGET_DIR}" rev-parse --show-prefix 2>/dev/null || true)"
+if [ ! -d "${TARGET_ABS}" ]; then
+  TARGET_REL="${TARGET_REL}$(basename "${TARGET_ABS}")"
+fi
 write_meta() {
-  printf 'scope=%s\nbase=%s\nhead=%s\nfail_on=%s\ncreated_at=%s\n' "${SCOPE}" "${DIFF_REF:-HEAD}" \
-    "$(git rev-parse HEAD)" "${FAIL_ON}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${REPORT%.json}.meta"
+  local tree=""
+  if [ "${SCOPE}" = "staged" ]; then
+    tree="$(git write-tree 2>/dev/null || true)"
+  fi
+  printf 'scope=%s\npath=%s\nbase=%s\nhead=%s\ntree=%s\nfail_on=%s\nexit_code=%s\ncreated_at=%s\n' "${SCOPE}" \
+    "${TARGET_REL:-.}" "${DIFF_REF:-HEAD}" "$(git rev-parse HEAD)" "${tree}" "${FAIL_ON}" "$1" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${REPORT%.json}.meta"
 }
 
 # Fast path: skip the scan (and its token cost) when no source file changed. Deletions count: they can remove controls.
@@ -197,7 +208,7 @@ done < <(changed_files)
 mkdir -p "$(dirname "${REPORT}")"
 if [ "${RELEVANT}" = false ]; then
   printf '[]\n' > "${REPORT}"
-  write_meta
+  write_meta 0
   echo "✅ No security-relevant source changes in the ${SCOPE} scope; skipped the scan (no tokens used)."
   exit 0
 fi
@@ -285,7 +296,7 @@ PY
 
 if [ "${RC}" -eq 0 ] || { [ "${RC}" -eq 1 ] && [ -s "${REPORT}" ]; }; then
   summarize
-  write_meta
+  write_meta "${RC}"
   if [ "${RC}" -eq 0 ]; then
     echo "✅ No blocking findings in the ${SCOPE} scope (--fail-on=${FAIL_ON:-<report only>}). Report: ${REPORT}"
   else
