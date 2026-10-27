@@ -192,14 +192,19 @@ chmod +x "${BIN_PATH}"
 mv "${BIN_PATH}" "${TARGET_DIR}/${BIN_NAME}"
 echo "✅ Installed CodeMender CLI to ${TARGET_DIR}/${BIN_NAME}"
 
-# 9. Verify installation and path
-export PATH="${TARGET_DIR}:${PATH}"
-if command -v cm >/dev/null 2>&1; then
-  echo "✅ Installed Version: $(cm --version)"
-  echo "ℹ️  Testing backend connectivity..."
-  HOME="${TMP_DIR}" cm init --verify || echo "⚠️  Connectivity verification note: ADC authentication may be required (run 'gcloud auth application-default login')."
+# 9. Verify installation, PATH, and CodeMender access
+if [[ ":${PATH}:" != *":${TARGET_DIR}:"* ]]; then
+  echo "⚠️  ${TARGET_DIR} is not on your PATH, and the plugin scripts run 'cm' from PATH."
+  echo "   Add it in your shell profile (for example ~/.bashrc or ~/.zshrc): export PATH=\"${TARGET_DIR}:\$PATH\""
+fi
+echo "✅ Installed Version: $("${TARGET_DIR}/${BIN_NAME}" --version 2>/dev/null || echo unknown)"
+# `cm health` has no side effects (no repository access, no disk writes, no billing) and needs no `cm init`.
+echo "ℹ️  Checking credentials and CodeMender access (cm health)..."
+if "${TARGET_DIR}/${BIN_NAME}" health --timeout 20s; then
+  echo "✅ CodeMender is reachable and authorized."
 else
-  echo "⚠️  Installed to ${TARGET_DIR}/${BIN_NAME}. Please ensure ${TARGET_DIR} is in your system PATH."
+  echo "⚠️  cm health found a problem (exit codes: 10 credentials, 20 config, 30 reachability, 40 authorization, 50 timeout)."
+  echo "   For credentials, run 'gcloud auth application-default login' and set GOOGLE_CLOUD_PROJECT."
 fi
 
 echo "=========================================================="

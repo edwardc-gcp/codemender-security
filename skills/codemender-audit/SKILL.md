@@ -21,7 +21,7 @@ When the user asks to verify the environment, check plugin readiness, or inspect
 1. Execute `bash "<skill-dir>/scripts/check_env.sh"` directly.
 2. **Strict prohibition**: Do NOT execute internal developer test suites (`validate_plugin.sh`) or inspect git commit history (`git status`, `git log`, `git show`) during environment readiness checks.
 3. Present the structured diagnostic table from `check_env.sh` directly to the user.
-4. If the diagnostic reports that `cm` is missing, display the human-in-the-loop consent prompt and ask for authorization (`[y/N]`) before executing `bash "<skill-dir>/scripts/install_cm.sh"`.
+4. If the diagnostic reports that `cm` is missing or older than 0.16.0, display the human-in-the-loop consent prompt and ask for authorization (`[y/N]`) before executing `bash "<skill-dir>/scripts/install_cm.sh"`. For other problems, relay the printed action items: the health row comes from `cm health` (credentials, project, endpoint reachability, authorization).
 
 ### 0.2 Stateless Wrapper & Initialization (`cm_exec.sh`)
 

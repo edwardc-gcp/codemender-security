@@ -68,7 +68,7 @@ Before using the plugin, ensure your environment meets the following requirement
    *Ensure your active Google Cloud project has access to CodeMender on Gemini Enterprise Agent Platform.*
 
 3. **CodeMender CLI (`cm`) Installation & Updates**:
-   Ask your agent to *"check my CodeMender environment"*: the `codemender-audit` skill runs `check_env.sh` and asks for your consent before running the bundled cross-platform installer. To run the installer yourself (requires `curl` and `unzip`; it checks the latest official release manifest, downloads the binary, and verifies its uncompressed SHA-256 checksum):
+   Ask your agent to *"check my CodeMender environment"*: the `codemender-audit` skill runs `check_env.sh` and asks for your consent before running the bundled cross-platform installer. To run the installer yourself (requires `curl` and `unzip`; it checks the latest official release manifest, downloads the binary, verifies its uncompressed SHA-256 checksum, and runs `cm health` to confirm your credentials and access):
    ```bash
    git clone https://github.com/edwardc-gcp/codemender-security.git
    bash codemender-security/scripts/install_cm.sh
@@ -103,7 +103,7 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
   Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, and a re-scan of the change after every fix to pick the next target and catch regressions.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
-  Instantly verifies CLI version, Google Cloud ADC authentication status, active project, and workspace data protection in a structured ASCII summary.
+  Checks that `cm` is on your PATH and at version 0.16.0 or later, runs the side-effect-free `cm health` check (credentials, project, endpoint reachability, and authorization), and checks workspace data protection, with a fix-it hint for each problem.
 
 ---
 
