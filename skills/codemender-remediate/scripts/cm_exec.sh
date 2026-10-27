@@ -83,7 +83,6 @@ mkdir -p "${PROJECT_ROOT}/.codemender"
 CM_ENV=(
   "HOME=${PROJECT_ROOT}"
   "CM_HOME=${PROJECT_ROOT}/.codemender"
-  "CM_LOCATION=${CM_LOCATION:-global}"
   "CM_REAL_HOME=${REAL_HOME}"
   "GIT_CONFIG_GLOBAL=${REAL_HOME}/.gitconfig"
   "GOOGLE_CLOUD_PROJECT=${GCP_PROJECT}"
