@@ -119,12 +119,13 @@ STUB_FIND_MODE=dynamic STUB_FIX_MODE=ineffective run_loop --strict --keep-commit
 git log -1 --format=%s | grep -q 'wip(cm): checkpoint' || fail "strict: the ineffective fix commit should be reverted"
 [ "$(cat app.py)" = 'query = "UNSAFE"' ] || fail "strict: app.py should be back to its checkpointed content"
 
-# 9. --all-open fixes findings from the local state database (stub report: f-001 in app.py).
+# 9. --all-open fixes actionable findings from the local state database (stub report: f-001 VERIFIED, f-002 DISMISSED).
 new_repo all_open
 : > "${STUB_LOG}"
 STUB_FIX_MODE=patch run_loop --all-open
 assert_user_work_restored "all-open"
 grep -q 'query = "SAFE"' app.py || fail "all-open: fix was not applied"
-grep -q '^fix f-001 ' "${STUB_LOG}" || fail "all-open: f-001 should be fixed"
+grep -q '^fix f-001 ' "${STUB_LOG}" || fail "all-open: the VERIFIED finding f-001 should be fixed"
+! grep -q '^fix f-002 ' "${STUB_LOG}" || fail "all-open: the DISMISSED finding f-002 should be skipped"
 
 echo "✅ cm_remediate_loop.sh tests passed (9 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate)"

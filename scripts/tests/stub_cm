@@ -8,7 +8,8 @@ fi
 
 case "${1:-}" in
   report)
-    printf '[{"finding_id": "f-001", "status": "OPEN", "severity": "HIGH", "title": "SQL injection in app.py", "file_path": "%s/app.py", "start_line": 1, "end_line": 1}]\n' "$(pwd)"
+    # cm 0.16.0 statuses: `cm verify` sets VERIFIED (still actionable); DISMISSED and FIXED are not.
+    printf '[{"finding_id": "f-001", "status": "VERIFIED", "severity": "HIGH", "title": "SQL injection in app.py", "file_path": "%s/app.py", "start_line": 1, "end_line": 1}, {"finding_id": "f-002", "status": "DISMISSED", "severity": "HIGH", "title": "False positive in app.py", "file_path": "%s/app.py", "start_line": 1, "end_line": 1}]\n' "$(pwd)" "$(pwd)"
     ;;
   fix)
     case "${STUB_FIX_MODE:-patch}" in

@@ -8,7 +8,7 @@
 #   (default)       fix the findings introduced by the current change (uncommitted work, else the branch vs --base or
 #                   its upstream), re-scanning after every fix
 #   finding_id ...  fix exactly these findings; each fix commit is scanned for new blocking findings
-#   --all-open      fix OPEN / REOPENED findings from the local state database (for example from an earlier full scan)
+#   --all-open      fix OPEN / VERIFIED / REOPENED findings from the local state database (for example from an earlier full scan)
 #   --strict        revert a fix commit when the re-scan still reports the target or finds new findings
 #   --keep-commits  keep the checkpoint and fix commits instead of restoring uncommitted changes
 
@@ -214,7 +214,7 @@ fi
 
 # 3. Choose remediation targets
 #   explicit IDs -> fix exactly those findings
-#   --all-open   -> OPEN / REOPENED findings from the local state database (for example from an earlier full scan).
+#   --all-open   -> OPEN / VERIFIED / REOPENED findings from the local state database (for example from an earlier full scan).
 #                   Diff scans never update stored statuses, so this list can include findings that are already fixed.
 #   default      -> findings introduced by the current change, from a diff scan of everything since the base: the
 #                   checkpoint base when uncommitted work was checkpointed, else --base, else the upstream branch.
@@ -423,7 +423,7 @@ except Exception as e:
   fi
 
   if [ ${#TARGET_FIDS[@]} -eq 0 ]; then
-    echo "✅ No actionable (OPEN / REOPENED) findings to remediate."
+    echo "✅ No actionable (OPEN / VERIFIED / REOPENED) findings to remediate."
     exit 0
   fi
 
