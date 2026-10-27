@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Atomic Non-Destructive Multi-Vulnerability Remediation Loop for CodeMender (cm)
-# Protects uncommitted work with a checkpoint commit, enforces outer-shell build hard gates,
-# prevents committing $HOME cache artifacts, and reconciles AST line numbers after every commit.
+# Protects uncommitted work with a checkpoint commit, enforces outer-shell build hard gates, commits fixes the way the
+# official autofix job does, and re-scans the change with cm_diff_scan.sh after every fix.
+#
+# Usage: cm_remediate_loop.sh [-c "<guidance>"] [-b "<outer-build-cmd>"] [--keep-commits] [--strict]
+#                             [--base REF] [--max-fixes N] [--fail-on SEVERITIES] [--all-open | finding_id ...]
+#   (default)       fix the findings introduced by the current change (uncommitted work, else the branch vs --base or
+#                   its upstream), re-scanning after every fix
+#   finding_id ...  fix exactly these findings; each fix commit is scanned for new blocking findings
+#   --all-open      fix OPEN / REOPENED findings from the local state database (for example from an earlier full scan)
+#   --strict        revert a fix commit when the re-scan still reports the target or finds new findings
+#   --keep-commits  keep the checkpoint and fix commits instead of restoring uncommitted changes
 
 set -euo pipefail
 
@@ -11,6 +20,11 @@ CM_EXEC="${SCRIPT_DIR}/cm_exec.sh"
 GUIDANCE="Apply minimal security fix preserving existing API behavior"
 OUTER_BUILD_CMD=""
 KEEP_COMMITS=false
+STRICT=false
+ALL_OPEN=false
+BASE_REF=""
+MAX_FIXES=10
+FAIL_ON="CRITICAL,HIGH"
 TARGET_FIDS=()
 
 while [ $# -gt 0 ]; do
@@ -27,8 +41,28 @@ while [ $# -gt 0 ]; do
       KEEP_COMMITS=true
       shift
       ;;
+    --strict)
+      STRICT=true
+      shift
+      ;;
+    --all-open)
+      ALL_OPEN=true
+      shift
+      ;;
+    --base)
+      BASE_REF="${2:-}"
+      shift 2
+      ;;
+    --max-fixes)
+      MAX_FIXES="${2:-10}"
+      shift 2
+      ;;
+    --fail-on)
+      FAIL_ON="${2-}"
+      shift 2
+      ;;
     -h|--help)
-      echo "Usage: $(basename "$0") [-c \"<guidance>\"] [-b \"<outer-build-cmd>\"] [--keep-commits] [finding_id ...]"
+      sed -n '2,14p' "$0" | sed -E 's/^# ?//'
       exit 0
       ;;
     *)
@@ -178,13 +212,177 @@ if [ -n "${DIRTY_FILES}" ]; then
   fi
 fi
 
-# 3. Resolve actionable findings from `cm report -f json` (Supports jq, python3, or pure awk fallback)
-if [ ${#TARGET_FIDS[@]} -eq 0 ]; then
-  REPORT_JSON="$("${CM_EXEC}" report -f json 2>/dev/null || true)"
-  if command -v jq >/dev/null 2>&1; then
-    FINDINGS_RAW="$(printf '%s' "${REPORT_JSON}" | sed -n '/^\[/,$p' | jq -r '.[] | select(.status != "FIXED" and .status != "DISMISSED") | (.finding_id // .id // empty)' 2>/dev/null || true)"
-  elif command -v python3 >/dev/null 2>&1; then
-    FINDINGS_RAW="$(printf '%s' "${REPORT_JSON}" | python3 -c '
+# 3. Choose remediation targets
+#   explicit IDs -> fix exactly those findings
+#   --all-open   -> OPEN / REOPENED findings from the local state database (for example from an earlier full scan).
+#                   Diff scans never update stored statuses, so this list can include findings that are already fixed.
+#   default      -> findings introduced by the current change, from a diff scan of everything since the base: the
+#                   checkpoint base when uncommitted work was checkpointed, else --base, else the upstream branch.
+#                   The change is re-scanned after every fix to confirm it and to pick the next target.
+DIFF_SCAN="${SCRIPT_DIR}/cm_diff_scan.sh"
+STATE_DIR="${PROJECT_ROOT}/.codemender"
+SCAN_REPORT="${STATE_DIR}/remediate-scan.json"
+PREV_REPORT="${STATE_DIR}/remediate-scan.prev.json"
+ATTEMPTED=()
+FIXED=()
+FAILED=()
+
+if [ ${#TARGET_FIDS[@]} -gt 0 ]; then
+  MODE="explicit"
+elif [ "${ALL_OPEN}" = true ]; then
+  MODE="all-open"
+else
+  MODE="diff"
+fi
+LOOP_BASE="${CHECKPOINT_BASE:-${BASE_REF}}"
+
+have_python() { command -v python3 >/dev/null 2>&1; }
+
+# Diff scan of the whole change since LOOP_BASE (report only: the loop decides what blocks).
+scan_change() {
+  local args=(--scope branch --fail-on "" --output "${SCAN_REPORT}")
+  if [ -n "${LOOP_BASE}" ]; then
+    args+=(--base "${LOOP_BASE}")
+  fi
+  bash "${DIFF_SCAN}" "${args[@]}"
+}
+
+# Next non-legacy finding in the latest diff report that has not been attempted yet (most severe first).
+next_diff_target() {
+  [ -s "${SCAN_REPORT}" ] || return 0
+  if have_python; then
+    python3 - "${SCAN_REPORT}" "${ATTEMPTED[@]+"${ATTEMPTED[@]}"}" <<'PY'
+import json, sys
+
+report, attempted = sys.argv[1], set(sys.argv[2:])
+try:
+    findings = json.load(open(report))
+except Exception:
+    sys.exit(0)
+rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+candidates = [
+    f for f in findings
+    if f.get("finding_id") and f["finding_id"] not in attempted
+    and not str(f.get("title", "")).startswith("[LEGACY / UNTOUCHED]")
+]
+candidates.sort(key=lambda f: rank.get(str(f.get("severity", "")).upper(), 9))
+if candidates:
+    print(candidates[0]["finding_id"])
+PY
+  elif command -v jq >/dev/null 2>&1; then
+    local fid
+    while IFS= read -r fid; do
+      case " ${ATTEMPTED[*]-} " in
+        *" ${fid} "*) continue ;;
+      esac
+      echo "${fid}"
+      return 0
+    done < <(jq -r '.[] | select((.title // "") | startswith("[LEGACY / UNTOUCHED]") | not) | .finding_id // empty' "${SCAN_REPORT}" 2>/dev/null)
+  else
+    echo "⚠️  Diff-driven remediation needs python3 or jq to read ${SCAN_REPORT}." >&2
+  fi
+  return 0
+}
+
+# Explains why a fix looks incomplete (target still reported, or new findings appeared); exit 0 when it does.
+fix_regressed() {
+  have_python || return 1
+  python3 - "${PREV_REPORT}" "${SCAN_REPORT}" "$1" <<'PY'
+import json, sys
+
+def load(path):
+    try:
+        return [f for f in json.load(open(path)) if not str(f.get("title", "")).startswith("[LEGACY / UNTOUCHED]")]
+    except Exception:
+        return []
+
+before, after, target = load(sys.argv[1]), load(sys.argv[2]), sys.argv[3]
+key = lambda f: f.get("fingerprint") or f.get("finding_id")
+target_keys = {key(f) for f in before if f.get("finding_id") == target} or {target}
+before_keys = {key(f) for f in before}
+still = [f for f in after if f.get("finding_id") == target or key(f) in target_keys]
+added = [f for f in after if key(f) not in before_keys]
+if still:
+    print(f"the target is still reported: {still[0].get('title', '')}")
+elif added:
+    print(f"the fix introduced {len(added)} new finding(s), for example: {added[0].get('title', '')}")
+else:
+    sys.exit(1)
+PY
+}
+
+# One fix: cm fix, outer build gate, autofix-style staging, commit. Returns 0 when a fix commit was created.
+remediate_one() {
+  local fid="$1"
+  echo "🛠️  Remediating finding: ${fid}"
+  if ! "${CM_EXEC}" fix "${fid}" -c "${GUIDANCE}" --bypass-warning -y; then
+    echo "⚠️  cm fix failed for ${fid}; dropping any partial patch."
+    drop_uncommitted_changes
+    return 1
+  fi
+  echo "🧪 Running outer-shell build hard gate: ${OUTER_BUILD_CMD}"
+  if ! eval "${OUTER_BUILD_CMD}"; then
+    echo "❌ Outer build validation failed for ${fid}! Reverting broken patch..."
+    drop_uncommitted_changes
+    return 1
+  fi
+  # Runtime/cache paths (.codemender/, .exploit/, .cache/, ...) stay out via .git/info/exclude (registered by cm_exec.sh).
+  stage_fix_changes
+  if git diff --cached --quiet; then
+    echo "ℹ️  No file modifications produced for ${fid}."
+    return 1
+  fi
+  # --no-verify: the loop runs its own build and security gates; user hooks must not block internal commits
+  git commit -q --no-verify -m "security(cm): fix ${fid}"
+  echo "✅ Committed verified fix for ${fid}"
+  return 0
+}
+
+revert_last_fix() {
+  echo "↩️  Reverting the fix commit for $1 (--strict)."
+  git reset -q --hard HEAD~1
+}
+
+if [ "${MODE}" = "diff" ]; then
+  echo "🔍 Scanning the change since ${LOOP_BASE:-the upstream branch} for findings to remediate..."
+  if ! scan_change; then
+    echo "❌ Could not scan the change. Pass finding IDs, --all-open, or --base <ref>." >&2
+    exit 1
+  fi
+  while [ ${#ATTEMPTED[@]} -lt "${MAX_FIXES}" ]; do
+    fid="$(next_diff_target)"
+    [ -n "${fid}" ] || break
+    ATTEMPTED+=("${fid}")
+    if ! remediate_one "${fid}"; then
+      FAILED+=("${fid}")
+      continue
+    fi
+    cp "${SCAN_REPORT}" "${PREV_REPORT}"
+    echo "🔍 Re-scanning the change to confirm the fix and pick the next target..."
+    if ! scan_change; then
+      echo "⚠️  Re-scan failed; stopping after this fix."
+      FIXED+=("${fid}")
+      break
+    fi
+    if reason="$(fix_regressed "${fid}")"; then
+      echo "⚠️  The fix for ${fid} looks incomplete: ${reason}"
+      if [ "${STRICT}" = true ]; then
+        revert_last_fix "${fid}"
+        cp "${PREV_REPORT}" "${SCAN_REPORT}"
+        FAILED+=("${fid}")
+        continue
+      fi
+    fi
+    FIXED+=("${fid}")
+  done
+else
+  if [ "${MODE}" = "all-open" ]; then
+    # Supports jq, python3, or pure awk fallback; findings labeled [LEGACY / UNTOUCHED] are skipped (jq / python3).
+    REPORT_JSON="$("${CM_EXEC}" report -f json 2>/dev/null || true)"
+    if command -v jq >/dev/null 2>&1; then
+      FINDINGS_RAW="$(printf '%s' "${REPORT_JSON}" | sed -n '/^\[/,$p' | jq -r '.[] | select(.status != "FIXED" and .status != "DISMISSED") | select((.title // "") | startswith("[LEGACY / UNTOUCHED]") | not) | (.finding_id // .id // empty)' 2>/dev/null || true)"
+    elif have_python; then
+      FINDINGS_RAW="$(printf '%s' "${REPORT_JSON}" | python3 -c '
 import sys, json
 try:
     raw = sys.stdin.read()
@@ -193,70 +391,74 @@ try:
     data = json.loads(raw[start:]) if start != -1 else []
     items = data if isinstance(data, list) else data.get("findings", [])
     for f in (items if isinstance(items, list) else []):
-        if isinstance(f, dict) and f.get("status") not in ("FIXED", "DISMISSED"):
+        if isinstance(f, dict) and f.get("status") not in ("FIXED", "DISMISSED") and not str(f.get("title", "")).startswith("[LEGACY / UNTOUCHED]"):
             fid = f.get("finding_id") or f.get("id")
             if fid:
                 print(fid)
 except Exception as e:
     print(f"⚠️ Warning: failed to parse cm report JSON: {e}", file=sys.stderr)
 ' || true)"
-  else
-    # Pure POSIX awk fallback when neither jq nor python3 is installed
-    FINDINGS_RAW="$(printf '%s\n' "${REPORT_JSON}" | awk '
-      /"finding_id"[[:space:]]*:/ {
-        match($0, /"finding_id"[[:space:]]*:[[:space:]]*"[^"]+"/);
-        s = substr($0, RSTART, RLENGTH);
-        sub(/.*:[[:space:]]*"/, "", s);
-        sub(/"$/, "", s);
-        fid = s;
-      }
-      /"status"[[:space:]]*:/ {
-        if (fid != "" && $0 !~ /"FIXED"/ && $0 !~ /"DISMISSED"/) {
-          print fid;
+    else
+      # Pure POSIX awk fallback when neither jq nor python3 is installed
+      FINDINGS_RAW="$(printf '%s\n' "${REPORT_JSON}" | awk '
+        /"finding_id"[[:space:]]*:/ {
+          match($0, /"finding_id"[[:space:]]*:[[:space:]]*"[^"]+"/);
+          s = substr($0, RSTART, RLENGTH);
+          sub(/.*:[[:space:]]*"/, "", s);
+          sub(/"$/, "", s);
+          fid = s;
         }
-        fid = "";
-      }
-    ' || true)"
+        /"status"[[:space:]]*:/ {
+          if (fid != "" && $0 !~ /"FIXED"/ && $0 !~ /"DISMISSED"/) {
+            print fid;
+          }
+          fid = "";
+        }
+      ' || true)"
+    fi
+    while IFS= read -r fid; do
+      [ -z "${fid}" ] && continue
+      TARGET_FIDS+=("${fid}")
+    done <<< "${FINDINGS_RAW}"
   fi
-  while IFS= read -r fid; do
-    [ -z "$fid" ] && continue
-    TARGET_FIDS+=("$fid")
-  done <<< "${FINDINGS_RAW}"
-fi
 
-if [ ${#TARGET_FIDS[@]} -eq 0 ]; then
-  echo "✅ No actionable (OPEN / REOPENED) findings to remediate."
-  exit 0
-fi
+  if [ ${#TARGET_FIDS[@]} -eq 0 ]; then
+    echo "✅ No actionable (OPEN / REOPENED) findings to remediate."
+    exit 0
+  fi
 
-# 4. Atomic Remediation Loop (Reconciles AST line numbers after EVERY committed fix)
-for fid in "${TARGET_FIDS[@]}"; do
-  [ -z "$fid" ] && continue
-  echo "🛠️  Remediating finding: ${fid}"
-  if "${CM_EXEC}" fix "$fid" -c "${GUIDANCE}" --bypass-warning -y; then
-    echo "🧪 Running outer-shell build hard gate: ${OUTER_BUILD_CMD}"
-    if ! eval "${OUTER_BUILD_CMD}"; then
-      echo "❌ Outer build validation failed for ${fid}! Reverting broken patch..."
-      drop_uncommitted_changes
+  for fid in "${TARGET_FIDS[@]}"; do
+    [ -n "${fid}" ] || continue
+    if ! remediate_one "${fid}"; then
+      FAILED+=("${fid}")
       continue
     fi
-    # Runtime/cache paths (.codemender/, .exploit/, .cache/, ...) stay out via .git/info/exclude (registered by cm_exec.sh).
-    stage_fix_changes
-    if ! git diff --cached --quiet; then
-      # --no-verify: the loop runs its own build and security gates; user hooks must not block internal commits
-      git commit -q --no-verify -m "security(cm): fix ${fid}"
-      echo "✅ Committed verified fix for ${fid}"
-      echo "🔍 Reconciling AST line numbers via differential cm find before next finding..."
-      if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-        "${CM_EXEC}" find . --diff=HEAD~1 -y || true
-      else
-        "${CM_EXEC}" find . -y || true
-      fi
-    else
-      echo "ℹ️  No file modifications produced for ${fid}."
-    fi
-  else
-    echo "⚠️  cm fix failed for ${fid}; cleaning working tree and continuing..."
-    drop_uncommitted_changes
-  fi
-done
+    # Regression gate: the fix commit itself must not introduce blocking findings.
+    echo "🔍 Scanning the fix commit for regressions..."
+    gate_rc=0
+    bash "${DIFF_SCAN}" --scope last-commit --fail-on "${FAIL_ON}" --output "${STATE_DIR}/remediate-last-commit.json" || gate_rc=$?
+    case "${gate_rc}" in
+      0)
+        FIXED+=("${fid}")
+        ;;
+      1)
+        echo "⚠️  The fix for ${fid} introduced blocking findings (--fail-on=${FAIL_ON})."
+        if [ "${STRICT}" = true ]; then
+          revert_last_fix "${fid}"
+          FAILED+=("${fid}")
+        else
+          FIXED+=("${fid}")
+        fi
+        ;;
+      *)
+        echo "⚠️  Could not scan the fix commit for ${fid}; keeping it."
+        FIXED+=("${fid}")
+        ;;
+    esac
+  done
+fi
+
+echo "📋 Remediation summary: ${#FIXED[@]} fixed${FIXED[0]+ (${FIXED[*]})}, ${#FAILED[@]} not fixed${FAILED[0]+ (${FAILED[*]})}."
+if [ "${MODE}" = "diff" ] && [ -s "${SCAN_REPORT}" ]; then
+  echo "   Latest diff report of the change: ${SCAN_REPORT}"
+fi

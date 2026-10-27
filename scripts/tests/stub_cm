@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
-#   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail   behavior of `cm fix` (default: patch)
+#   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail|by-id|ineffective   behavior of `cm fix` (default: patch)
 #   STUB_LOG=<file>                              append every invocation's arguments to this file
 if [ -n "${STUB_LOG:-}" ]; then
   printf '%s\n' "$*" >> "${STUB_LOG}"
@@ -33,19 +33,32 @@ case "${1:-}" in
         echo "# half-applied patch" >> app.py
         exit 1
         ;;
+      by-id)
+        target="${2#f-}.py"
+        sed -i.bak 's/UNSAFE/SAFE/' "${target}" && rm -f "${target}.bak"
+        ;;
+      ineffective)
+        target="${2#f-}.py"
+        echo "# attempted fix" >> "${target}"
+        ;;
     esac
     ;;
   --version)
     echo "cm version 0.16.0 (stub)"
     ;;
   find)
-    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|error; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
+    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
+    # dynamic reports one HIGH finding (id f-<name>) for each of app.py / db.py that still contains UNSAFE.
     out=""
+    fail_on="CRITICAL,HIGH"
     prev=""
     for arg in "$@"; do
       if [ "${prev}" = "--output" ]; then
         out="${arg}"
       fi
+      case "${arg}" in
+        --fail-on=*) fail_on="${arg#--fail-on=}" ;;
+      esac
       prev="${arg}"
     done
     if [ -n "${STUB_DIFF_SNAPSHOT:-}" ]; then
@@ -65,6 +78,19 @@ case "${1:-}" in
       error)
         echo "Error: retrieving VCS diff: git diff failed: exit status 128" >&2
         exit 1
+        ;;
+      dynamic)
+        findings=""
+        for f in app.py db.py; do
+          if [ -f "${f}" ] && grep -q 'UNSAFE' "${f}"; then
+            name="${f%.py}"
+            entry="{\"finding_id\": \"f-${name}\", \"fingerprint\": \"fp-${name}\", \"severity\": \"HIGH\", \"status\": \"OPEN\", \"title\": \"SQL injection in ${f}\", \"file_path\": \"$(pwd)/${f}\", \"start_line\": 1, \"end_line\": 1}"
+            findings="${findings:+${findings}, }${entry}"
+          fi
+        done
+        if [ -n "${out}" ]; then printf '[%s]\n' "${findings}" > "${out}"; fi
+        if [ -n "${findings}" ] && [ -n "${fail_on}" ]; then exit 1; fi
+        exit 0
         ;;
     esac
     ;;

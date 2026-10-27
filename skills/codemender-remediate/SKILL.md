@@ -24,13 +24,15 @@ To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` c
 1. **Stateless Workspace & `.git/info/exclude` Shield**: Scopes `HOME="${PROJECT_ROOT}"`, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`, and excludes `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, and `*.sarif`.
 2. **Checkpoint Commit for Uncommitted Work**: If the working tree has uncommitted changes, the loop commits them as `wip(cm): checkpoint before security remediation` before the first `cm fix`, so the fix can see the code and the workspace reset cannot delete it. On exit (including failures and interrupts) it drops leftover patches and resets back to the original base: your changes come back uncommitted, now including the applied fixes (previously staged changes come back unstaged). Pass `--keep-commits` to keep the checkpoint and fix commits for review instead.
 3. **Outer-Shell Build Hard Gate (`OUTER_BUILD_CMD`)**: Dynamically probes `pytest`, `python3 -m py_compile`, `node --check`, `go test`, or `cargo check`. If `cm fix` produces a patch that fails the outer build gate, it immediately reverts (`git checkout HEAD -- . && git clean -fd`).
-4. **Autofix-Style Commits & Differential AST Reconciliation**: Like the official CodeMender autofix job, each fix commit contains changes to files already in the repository plus new source files the fix adds (for example a sanitizer helper); other new files such as test output stay out. CodeMender's own ignore-file edits (`.exploit/` appended to `.gitignore`, generated `# CodeMender enforced ignores` files) are dropped because `.git/info/exclude` already covers those paths. Commits use `--no-verify` because the loop runs its own gates, and the loop runs `cm find . --diff=HEAD~1 -y` after every commit so subsequent patches reconcile modified files and 1-hop callers without rescanning the entire repository.
+4. **Autofix-Style Commits**: Like the official CodeMender autofix job, each fix commit contains changes to files already in the repository plus new source files the fix adds (for example a sanitizer helper); other new files such as test output stay out. CodeMender's own ignore-file edits (`.exploit/` appended to `.gitignore`, generated `# CodeMender enforced ignores` files) are dropped because `.git/info/exclude` already covers those paths. Commits use `--no-verify` because the loop runs its own gates.
+5. **Re-Scan After Every Fix (`cm_diff_scan.sh`)**: By default the loop targets the findings introduced by the current change (your uncommitted work, or the branch versus `--base` or its upstream), re-scans that change after each fix commit to confirm the fix and pick the next target, and never retries a finding. With explicit finding IDs or `--all-open`, each fix commit is scanned on its own for new blocking findings. `--strict` reverts a fix commit that leaves the target in place or adds findings; without it the loop only warns.
 
 ---
 
 ## Phase 1: Atomic Multi-Vulnerability Remediation (`cm_remediate_loop.sh`)
 
-### Option A: Remediate All Actionable (`OPEN` / `REOPENED`) Findings
+### Option A: Remediate the Findings Introduced by the Current Change (Default)
+Fixes what the current change introduces: the user's uncommitted work when there is any, otherwise the branch compared with its upstream (pass `--base origin/main` to choose the base). Add `--strict` to revert fixes that the re-scan does not confirm.
 ```bash
 bash "<skill-dir>/scripts/cm_remediate_loop.sh" \
   -c "Apply idiomatic security patch preserving public function signatures and HTTP status codes"
@@ -51,17 +53,24 @@ bash "<skill-dir>/scripts/cm_remediate_loop.sh" --keep-commits \
   -c "Apply idiomatic security patch preserving public function signatures and HTTP status codes"
 ```
 
+### Option D: Remediate Findings from an Earlier Full Scan (`--all-open`)
+Use this for findings in committed code reported by a deep or quick scan. Statuses in the local state database are only updated by `cm fix` and `cm verify`, so this list can include findings that were already fixed another way.
+```bash
+bash "<skill-dir>/scripts/cm_remediate_loop.sh" --all-open \
+  -c "Apply idiomatic security patch preserving public function signatures and HTTP status codes"
+```
+
 ---
 
 ## Phase 2: Post-Fix Re-Verification & Rollback (`cm vcs`)
 
-### 1. Confirm Remediation Status (`FIXED` vs. `REOPENED`)
-After `cm_remediate_loop.sh` completes its `cm find . --diff=HEAD~1 -y` AST reconciliation, inspect the report:
+### 1. Confirm Remediation Status
+The loop prints a summary of fixed and unfixed findings. In the default mode it also leaves the final diff report of the change at `.codemender/remediate-scan.json`; an empty list means the change is clean. `cm report` reads the local state database, which diff scans never update, so findings confirmed fixed by a re-scan can still appear there as `OPEN` or `VERIFIED`:
 ```bash
 bash "<skill-dir>/scripts/cm_exec.sh" report
 bash "<skill-dir>/scripts/cm_exec.sh" report -f sarif > remediated-results.sarif
 ```
-* **`FIXED`**: Vulnerability is resolved and verified.
+* **`FIXED`**: `cm fix` resolved and verified the vulnerability.
 * **`REOPENED`**: Indicates a patch regression or incomplete fix across a secondary dataflow path; re-run `cm_remediate_loop.sh` with more specific `-c "<guidance>"`.
 
 ### 2. Emergency VCS Rollback (`cm vcs`)
