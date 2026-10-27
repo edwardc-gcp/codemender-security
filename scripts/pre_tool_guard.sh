@@ -1,19 +1,39 @@
 #!/usr/bin/env bash
 # Deterministic PreToolUse security guard for Google Cloud CodeMender (cm) CLI.
 # Zero hard dependencies (pure bash + POSIX sed/grep with optional jq/python3 acceleration).
-# Compatible with both Antigravity/Jetski (toolCall.args.CommandLine) and Claude Code (tool_input.command).
+# Compatible with Antigravity/Jetski (toolCall.args.CommandLine) and with Claude Code and Codex (tool_input.command).
 
 set -euo pipefail
 
 RAW_INPUT="$(cat || true)"
 
+# Detect the payload format without forking, so the fast path stays under 2ms.
+# Claude Code and Codex send {"tool_name": ..., "tool_input": {...}}; Antigravity sends {"toolCall": {...}}.
+# Codex adds a "turn_id" field and exports PLUGIN_ROOT to plugin hooks.
+RE_TOOL_INPUT='"tool_input"[[:space:]]*:'
+RE_TURN_ID='"turn_id"[[:space:]]*:'
+PAYLOAD_FORMAT="antigravity"
+if [[ "${RAW_INPUT}" =~ ${RE_TOOL_INPUT} ]]; then
+  PAYLOAD_FORMAT="claude"
+  if [[ -n "${PLUGIN_ROOT:-}" || "${RAW_INPUT}" =~ ${RE_TURN_ID} ]]; then
+    PAYLOAD_FORMAT="codex"
+  fi
+fi
+
+emit_allow() {
+  # Antigravity expects an explicit decision; Claude Code and Codex treat empty output as "no objection".
+  if [ "${PAYLOAD_FORMAT}" = "antigravity" ]; then
+    printf '{"decision": "allow"}\n'
+  fi
+}
+
 # Fast-path (<2ms): if stdin doesn't mention `cm` or `install_cm.sh`, allow immediately
 if [[ "${RAW_INPUT}" != *"cm"* && "${RAW_INPUT}" != *"install_cm.sh"* ]]; then
-  printf '{"decision": "allow"}\n'
+  emit_allow
   exit 0
 fi
 
-# Extract CommandLine (Antigravity) or command (Claude Code) with zero-dependency fallback
+# Extract CommandLine (Antigravity) or command (Claude Code / Codex) with zero-dependency fallback
 extract_cmd() {
   if command -v jq >/dev/null 2>&1; then
     printf '%s' "${RAW_INPUT}" | jq -r '.toolCall.args.CommandLine // .tool_input.command // empty' 2>/dev/null && return 0
@@ -36,23 +56,28 @@ except Exception:
 CMD="$(extract_cmd || true)"
 
 if [ -z "${CMD}" ]; then
-  printf '{"decision": "allow"}\n'
+  emit_allow
   exit 0
 fi
 
 emit_response() {
   local decision="$1"
   local reason="$2"
-  if [[ "${RAW_INPUT}" == *"tool_input"* ]]; then
-    local claude_decision="deny"
-    if [[ "${decision}" == "force_ask" || "${decision}" == "ask" ]]; then
-      claude_decision="ask"
-    fi
-    printf '{"decision": "%s", "reason": "%s", "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "%s", "permissionDecisionReason": "%s"}}\n' \
-      "${decision}" "${reason}" "${claude_decision}" "${reason}"
-  else
+  if [ "${PAYLOAD_FORMAT}" = "antigravity" ]; then
     printf '{"decision": "%s", "reason": "%s"}\n' "${decision}" "${reason}"
+    return 0
   fi
+  local permission="deny"
+  if [[ "${decision}" == "force_ask" || "${decision}" == "ask" ]]; then
+    if [ "${PAYLOAD_FORMAT}" = "codex" ]; then
+      # Codex does not support "ask" yet: it would mark the hook as failed and still run the command.
+      reason="${reason} Codex hooks cannot prompt for approval, so the command is blocked: show it to the user and let them run it themselves if they approve."
+    else
+      permission="ask"
+    fi
+  fi
+  printf '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "%s", "permissionDecisionReason": "%s"}}\n' \
+    "${permission}" "${reason}"
 }
 
 # Rule 1: Hard block `cm init -y` / `cm init --yes` (Zero Data-Loss Guard)
@@ -87,4 +112,4 @@ if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|ver
   fi
 fi
 
-printf '{"decision": "allow"}\n'
+emit_allow

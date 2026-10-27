@@ -10,7 +10,7 @@ cd "${REPO_ROOT}"
 echo "🔍 Running codemender-security Plugin Validation Suite..."
 
 # 0. Hardcoded User Path Prohibition Gate (Prevent /Users/<user> or /home/<user> leakage)
-if grep -rnE '(/Users/[a-zA-Z0-9._-]+|/home/[a-zA-Z0-9._-]+)' SKILL.md CLAUDE.md README.md hooks.json rules/ scripts/ skills/ references/ --exclude="validate_plugin.sh"; then
+if grep -rnE '(/Users/[a-zA-Z0-9._-]+|/home/[a-zA-Z0-9._-]+)' SKILL.md CLAUDE.md README.md hooks.json hooks/ rules/ scripts/ skills/ references/ --exclude="validate_plugin.sh"; then
   echo "❌ Hardcoded personal path detected in repository files!"
   exit 1
 fi
@@ -82,6 +82,41 @@ for minimal in (False, True):
 print("✅ PreToolUse shell hook unit tests passed (24/24 assertions across standard & no-Python/no-jq environments)")
 '
 
+# 2b. Claude Code / Codex Hook Contract (tool_input.command in, hookSpecificOutput out, silent allow)
+python3 -c '
+import json, os, subprocess
+
+def run(payload, minimal=False, extra_env=None):
+    env = dict(os.environ)
+    env.pop("PLUGIN_ROOT", None)
+    env.update(extra_env or {})
+    data = json.dumps(payload)
+    if minimal:
+        cmd = ["bash", "-c", "jq() { return 127; }; python3() { return 127; }; export -f jq python3; source scripts/pre_tool_guard.sh"]
+    else:
+        cmd = ["bash", "scripts/pre_tool_guard.sh"]
+    out = subprocess.check_output(cmd, input=data, text=True, env=env).strip()
+    # Allow must be silent for Claude Code and Codex; any output must be the hookSpecificOutput shape.
+    return json.loads(out)["hookSpecificOutput"]["permissionDecision"] if out else "allow"
+
+claude = lambda c: {"tool_name": "Bash", "tool_input": {"command": c}}
+codex = lambda c: {"tool_name": "Bash", "tool_input": {"command": c}, "turn_id": "turn-1"}
+count = 0
+for minimal in (False, True):
+    # Codex cannot prompt ("ask" is unsupported and would let the command run), so consent rules deny there.
+    for build, consent in ((claude, "ask"), (codex, "deny")):
+        assert run(build("cm init -y"), minimal) == "deny"
+        assert run(build("cm verify 123 --unrestricted"), minimal) == consent
+        assert run(build("bash scripts/install_cm.sh"), minimal) == consent
+        assert run(build("cm find . -y"), minimal) == "deny"
+        assert run(build("bash /opt/p/skills/codemender-audit/scripts/cm_exec.sh find . --diff -y"), minimal) == "allow"
+        assert run(build("ls -la"), minimal) == "allow"
+        count += 6
+    assert run(claude("cm update"), minimal, {"PLUGIN_ROOT": "/opt/p"}) == "deny"
+    count += 1
+print(f"✅ Claude Code / Codex hook contract tests passed ({count}/{count} assertions)")
+'
+
 # 3. JSON Array Parser Verification (Matches cm report -f json v0.8.0 schema across Python & pure awk)
 python3 -c '
 import json, subprocess
@@ -118,7 +153,16 @@ import json, sys
 with open("hooks.json") as fh:
     hooks = json.load(fh)
     assert "codemender-safety-guard" in hooks, "Missing codemender-safety-guard in hooks.json"
-print("✅ hooks.json valid")
+print("✅ hooks.json valid (Antigravity)")
+
+with open("hooks/hooks.json") as fh:
+    groups = json.load(fh)["hooks"]["PreToolUse"]
+assert any(
+    g.get("matcher") == "Bash"
+    and any("${CLAUDE_PLUGIN_ROOT}/scripts/pre_tool_guard.sh" in h.get("command", "") for h in g.get("hooks", []))
+    for g in groups
+), "hooks/hooks.json must run ${CLAUDE_PLUGIN_ROOT}/scripts/pre_tool_guard.sh for the Bash tool"
+print("✅ hooks/hooks.json valid (Claude Code & Codex)")
 
 manifests = [
     "plugin.json",
