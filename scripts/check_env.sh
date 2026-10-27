@@ -5,10 +5,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Locate the plugin root: this script ships both in scripts/ and in skills/<skill>/scripts/.
+PLUGIN_ROOT="${SCRIPT_DIR}"
+while [ "${PLUGIN_ROOT}" != "/" ] && [ ! -f "${PLUGIN_ROOT}/plugin.json" ] && [ ! -f "${PLUGIN_ROOT}/.claude-plugin/plugin.json" ]; do
+  PLUGIN_ROOT="$(dirname "${PLUGIN_ROOT}")"
+done
+if [ "${PLUGIN_ROOT}" = "/" ]; then
+  PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
+PLUGIN_VERSION="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "${PLUGIN_ROOT}/plugin.json" 2>/dev/null | head -n 1 || true)"
 
 echo "========================================================================"
-echo " 🛡️  CodeMender Security Plugin (v1.2.0) - Diagnostic Health Check"
+echo " 🛡️  CodeMender Security Plugin (v${PLUGIN_VERSION:-unknown}) - Diagnostic Health Check"
 echo "========================================================================"
 
 # 1. Check CodeMender Binary

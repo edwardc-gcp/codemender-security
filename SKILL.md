@@ -22,35 +22,32 @@ To conserve context tokens and prevent stateless subshell bugs, delegate to the 
 
 ## 2. Quick-Start Command Reference (Stateless Subshell Safe)
 
-Every `run_command` executes in an isolated subshell. Resolve `PLUGIN_DIR` dynamically and invoke `cm_exec.sh` or `cm_remediate_loop.sh`:
+Every `run_command` executes in an isolated subshell. Replace `<plugin-root>` with the absolute path of this plugin's install directory (the directory containing this file) and invoke `cm_exec.sh` or `cm_remediate_loop.sh`; each skill also bundles the same helpers under its own `scripts/` directory:
 
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
 # 1. Safe Initialization (Never passes -y; skips if .codemender/config.yaml exists)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" init
+bash "<plugin-root>/scripts/cm_exec.sh" init
 
 # 2a. Targeted AST & Taint Scan (Scan 10-50 files per module batch on large repos)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . -y -c "Focus on auth bypass, injection, and SSRF"
+bash "<plugin-root>/scripts/cm_exec.sh" find . -y -c "Focus on auth bypass, injection, and SSRF"
 
 # 2b. Fast PR / Uncommitted Diff Scan (Traces 1-hop impacted callers & removed security controls)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff -y
+bash "<plugin-root>/scripts/cm_exec.sh" find . --diff -y
 
 # 3a. Tier 1 Fast Semantic Verification (Default — 15-25s, skips 15-min dynamic sandbox loop)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
+bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 
 # 3b. Tier 2 Deep Sandboxed PoC Verification (On-Demand inside OS exebox)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> -c "Verify exploitability" --no-reset --bypass-warning -y
+bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> -c "Verify exploitability" --no-reset --bypass-warning -y
 
 # 4. Ingest Third-Party SARIF or Simple JSON Findings
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report import -f third-party-findings.json
+bash "<plugin-root>/scripts/cm_exec.sh" report import -f third-party-findings.json
 
 # 5. Atomic Multi-Vulnerability Remediation Loop (Pre-Stash + Outer Build Gate + Safe Commit + AST Reconcile)
-bash "${PLUGIN_DIR}/scripts/cm_remediate_loop.sh" -c "Apply minimal security fix preserving API contracts"
+bash "<plugin-root>/scripts/cm_remediate_loop.sh" -c "Apply minimal security fix preserving API contracts"
 
 # 6. Export GitHub / SCC SARIF v2.1.0 Report
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
+bash "<plugin-root>/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
 ```
 
 ---

@@ -17,11 +17,19 @@ fi
 echo "✅ Zero hardcoded user paths in repository files"
 
 # 1. Shell Script Syntax Verification
-for sh_file in scripts/install_cm.sh scripts/cm_exec.sh scripts/cm_remediate_loop.sh scripts/pre_tool_guard.sh scripts/validate_plugin.sh; do
+for sh_file in scripts/install_cm.sh scripts/cm_exec.sh scripts/cm_remediate_loop.sh scripts/pre_tool_guard.sh scripts/check_env.sh scripts/sync_skill_scripts.sh scripts/validate_plugin.sh; do
   bash -n "${sh_file}"
   chmod +x "${sh_file}"
   echo "✅ Shell syntax & executable bit valid: ${sh_file}"
 done
+
+# 1b. Self-Contained Skills (scripts bundled per skill, referenced relative to the skill root)
+bash scripts/sync_skill_scripts.sh --check
+if grep -rnE '\.gemini/config/plugins|\.claude/plugins|CM_PLUGIN_DIR|\.\./\.\./scripts' skills/*/SKILL.md; then
+  echo "❌ Skills must reference their own bundled scripts via <skill-dir>/scripts/, not install-specific paths!"
+  exit 1
+fi
+echo "✅ Skills reference bundled scripts only (no install-specific paths)"
 
 # 2. PreToolUse Hook Verification (Normal PATH + Pure POSIX Fallback without python3/jq)
 python3 -c '
@@ -117,6 +125,7 @@ if len(versions) != 1:
 
 # 5. Reference File Synchronization Check (Zero-Drift Guard)
 diff -u references/cli_reference.md skills/codemender-audit/references/cli_reference.md
+diff -u references/cli_reference.md skills/codemender-remediate/references/cli_reference.md
 diff -u references/config_schema.md skills/codemender-audit/references/config_schema.md
 diff -u references/config_schema.md skills/codemender-remediate/references/config_schema.md
 diff -u references/vibe_coding_pitfalls.md skills/codemender-remediate/references/vibe_coding_pitfalls.md

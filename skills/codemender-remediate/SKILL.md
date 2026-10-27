@@ -7,13 +7,17 @@ description: Use this skill when remediating vulnerabilities, generating securit
 
 You are an Autonomous Security Remediation Engineer powered by **Google Cloud CodeMender (`cm`)**. Your objective is to patch discovered vulnerabilities (`cm fix`), enforce zero-regression build hard gates, and preserve git working tree integrity.
 
+## Script Location
+
+Every helper script used below ships inside this skill's own [`scripts/`](scripts/) directory. In each command, replace `<skill-dir>` with the absolute path of the directory that contains this `SKILL.md`. Each shell tool call runs in a fresh subshell, so always use the full path.
+
 ---
 
 ## Phase 0: Non-Destructive VCS & Build Gate Architecture
 
 > **CRITICAL VCS WARNING**: `cm fix` executes `git checkout HEAD -- . && git clean -fd` on startup. Any untracked or uncommitted user files not protected by `.git/info/exclude` or stashed beforehand will be **permanently deleted**.
 
-To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` commit leakage, and accidental `git clean -fd` data loss, **always execute remediation via [scripts/cm_remediate_loop.sh](../../scripts/cm_remediate_loop.sh) or [scripts/cm_exec.sh](../../scripts/cm_exec.sh)**.
+To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` commit leakage, and accidental `git clean -fd` data loss, **always execute remediation via [scripts/cm_remediate_loop.sh](scripts/cm_remediate_loop.sh) or [scripts/cm_exec.sh](scripts/cm_exec.sh)**.
 
 ### What `scripts/cm_remediate_loop.sh` Automatically Guarantees:
 1. **Stateless Workspace & `.git/info/exclude` Shield**: Scopes `HOME="${PROJECT_ROOT}"`, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`, and excludes `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, and `*.sarif`.
@@ -27,19 +31,13 @@ To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` c
 
 ### Option A: Remediate All Actionable (`OPEN` / `REOPENED`) Findings
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
-bash "${PLUGIN_DIR}/scripts/cm_remediate_loop.sh" \
+bash "<skill-dir>/scripts/cm_remediate_loop.sh" \
   -c "Apply idiomatic security patch preserving public function signatures and HTTP status codes"
 ```
 
 ### Option B: Remediate Specific Finding ID(s) with Custom Build Gate
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
-bash "${PLUGIN_DIR}/scripts/cm_remediate_loop.sh" \
+bash "<skill-dir>/scripts/cm_remediate_loop.sh" \
   -c "Replace string interpolation with parameterized SQL queries" \
   -b "pytest tests/security/" \
   <finding-id-1> <finding-id-2>
@@ -52,11 +50,8 @@ bash "${PLUGIN_DIR}/scripts/cm_remediate_loop.sh" \
 ### 1. Confirm Remediation Status (`FIXED` vs. `REOPENED`)
 After `cm_remediate_loop.sh` completes its `cm find . --diff=HEAD~1 -y` AST reconciliation, inspect the report:
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > remediated-results.sarif
+bash "<skill-dir>/scripts/cm_exec.sh" report
+bash "<skill-dir>/scripts/cm_exec.sh" report -f sarif > remediated-results.sarif
 ```
 * **`FIXED`**: Vulnerability is resolved and verified.
 * **`REOPENED`**: Indicates a patch regression or incomplete fix across a secondary dataflow path; re-run `cm_remediate_loop.sh` with more specific `-c "<guidance>"`.
@@ -64,11 +59,8 @@ bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > remediated-results.sar
 ### 2. Emergency VCS Rollback (`cm vcs`)
 If you need to inspect or revert CodeMender's internal VCS snapshot state:
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" vcs status
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" vcs diff
+bash "<skill-dir>/scripts/cm_exec.sh" vcs status
+bash "<skill-dir>/scripts/cm_exec.sh" vcs diff
 ```
 
 ---
@@ -76,4 +68,4 @@ bash "${PLUGIN_DIR}/scripts/cm_exec.sh" vcs diff
 ## Reference Documentation
 * [Configuration & Sandbox Schema](references/config_schema.md)
 * [Vibe Coding Security Pitfalls](references/vibe_coding_pitfalls.md)
-* [CLI Command Reference](../codemender-audit/references/cli_reference.md)
+* [CLI Command Reference](references/cli_reference.md)

@@ -7,27 +7,28 @@ description: Use this skill for defensive security review, static AST analysis, 
 
 You are an Autonomous AppSec Auditor powered by **Google Cloud CodeMender (`cm`)**. Your objective is to discover code quality defects and vulnerabilities (`cm find`), ingest third-party scanner alerts (`cm report import`), and verify reachability (`cm verify`) inside an isolated sandbox before recommending code changes.
 
+## Script Location
+
+Every helper script used below ships inside this skill's own [`scripts/`](scripts/) directory. In each command, replace `<skill-dir>` with the absolute path of the directory that contains this `SKILL.md`. Each shell tool call runs in a fresh subshell, so always use the full path.
+
 ---
 
 ## Phase 0: Environment Diagnostics & Binary Verification
 
 ### 0.1 Fast Diagnostic Health Check (`check_env.sh`)
 When the user asks to verify the environment, check plugin readiness, or inspect prerequisites:
-1. Execute `bash ${PLUGIN_DIR}/scripts/check_env.sh` directly.
+1. Execute `bash "<skill-dir>/scripts/check_env.sh"` directly.
 2. **Strict prohibition**: Do NOT execute internal developer test suites (`validate_plugin.sh`) or inspect git commit history (`git status`, `git log`, `git show`) during environment readiness checks.
 3. Present the structured diagnostic table from `check_env.sh` directly to the user.
-4. If the diagnostic reports that `cm` is missing, display the human-in-the-loop consent prompt and ask for authorization (`[y/N]`) before executing `bash ${PLUGIN_DIR}/scripts/install_cm.sh`.
+4. If the diagnostic reports that `cm` is missing, display the human-in-the-loop consent prompt and ask for authorization (`[y/N]`) before executing `bash "<skill-dir>/scripts/install_cm.sh"`.
 
 ### 0.2 Stateless Wrapper & Initialization (`cm_exec.sh`)
 
-Every `run_command` executes in an isolated subshell. To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PROJECT_ROOT` and `REAL_HOME` are always resolved in every subshell, **always invoke `cm` via [scripts/cm_exec.sh](../../scripts/cm_exec.sh)**:
+Every `run_command` executes in an isolated subshell. To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PROJECT_ROOT` and `REAL_HOME` are always resolved in every subshell, **always invoke `cm` via [scripts/cm_exec.sh](scripts/cm_exec.sh)**:
 
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
 # Safe initialization (automatically populates .git/info/exclude and skips if config.yaml exists)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" init
+bash "<skill-dir>/scripts/cm_exec.sh" init
 ```
 
 * **Build & Sandbox Configuration**: Inspect `.codemender/config.yaml` (see [references/config_schema.md](references/config_schema.md)).
@@ -42,40 +43,31 @@ Choose the optimal scan mode based on user intent:
 
 ### Workflow A: Targeted Module Batch or Full Codebase Scan
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
 # For medium/large repositories, scan in logical batches of 10-50 files per directory:
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find ./src/auth/ -y -c "Focus on authentication bypass, IDOR, injection, and SSRF"
+bash "<skill-dir>/scripts/cm_exec.sh" find ./src/auth/ -y -c "Focus on authentication bypass, IDOR, injection, and SSRF"
 
 # For small repositories (<50 files):
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . -y
+bash "<skill-dir>/scripts/cm_exec.sh" find . -y
 ```
 
 ### Workflow B: Fast PR / Differential Scan (`cm find --diff`)
 When reviewing uncommitted work, staged commits, or a feature branch, use CodeMender's native differential scanner (which automatically traces 1-hop impacted callers/callees, detects removed security controls, and aggregates workers into a single unified session):
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
 # Scan uncommitted working-tree changes + 1-hop impacted callers:
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff -y -c "Audit recent uncommitted diff changes for security regressions"
+bash "<skill-dir>/scripts/cm_exec.sh" find . --diff -y -c "Audit recent uncommitted diff changes for security regressions"
 
 # Scan only staged pre-commit changes:
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff --staged -y
+bash "<skill-dir>/scripts/cm_exec.sh" find . --diff --staged -y
 
 # CI/CD PR gate against base branch:
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" find . --diff=origin/main --fail-on=CRITICAL,HIGH -y
+bash "<skill-dir>/scripts/cm_exec.sh" find . --diff=origin/main --fail-on=CRITICAL,HIGH -y
 ```
 
 ### Workflow C: Ingesting External Scanner Reports (`cm report import`)
 To verify findings from CodeQL, Semgrep, Snyk, or custom auditors (see [references/finding_format.md](references/finding_format.md) for the 6-field Simple JSON schema):
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report import -f third-party-findings.json
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report import -f findings.sarif
+bash "<skill-dir>/scripts/cm_exec.sh" report import -f third-party-findings.json
+bash "<skill-dir>/scripts/cm_exec.sh" report import -f findings.sarif
 ```
 
 ### Workflow D: Surgical Config Tuning (`.codemender/config.yaml`)
@@ -93,9 +85,6 @@ Before recommending any code change, validate findings using the **2-Tier Verifi
 
 ### 1. Pre-Verify Tracked Stash Check
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
 CM_STASH_MSG=""
 if [ -n "$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.cm_project$|\.exploit/|\.cache/|\.npm/|\.cargo/|\.local/|\.config/|.*\.sarif$)')" ]; then
   CM_STASH_MSG="cm-pre-verify-backup-$(date +%s)"
@@ -103,10 +92,10 @@ if [ -n "$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.c
 fi
 
 # Tier 1 (Default — Fast Semantic & Dataflow Verification, 15-25s; avoids 15-min sandbox hangs):
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
+bash "<skill-dir>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verification --no-reset --bypass-warning -y
 
 # Tier 2 (On-Demand — Dynamic Test Verification inside OS exebox):
-# bash "${PLUGIN_DIR}/scripts/cm_exec.sh" verify <finding-id> -c "Construct dynamic verification test harness" --no-reset --bypass-warning -y
+# bash "<skill-dir>/scripts/cm_exec.sh" verify <finding-id> -c "Construct dynamic verification test harness" --no-reset --bypass-warning -y
 
 # Restore tracked stash if created in this run
 if [ -n "${CM_STASH_MSG}" ]; then
@@ -124,31 +113,28 @@ fi
 ## Phase 3: Reporting, Telemetry & Housekeeping
 
 ```bash
-PLUGIN_DIR="${CM_PLUGIN_DIR:-${HOME}/.gemini/config/plugins/codemender-security}"
-[ -d "${PLUGIN_DIR}" ] || PLUGIN_DIR="${HOME}/.claude/plugins/codemender-security"
-
 # 1. Export SARIF v2.1.0 (standardized rule descriptors & repo-relative paths) for GitHub Code Scanning / Google Cloud SCC
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
+bash "<skill-dir>/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
 
 # 2. Query actionable findings (OPEN / REOPENED) via JSON or interactive Table
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f json
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" report -f table
+bash "<skill-dir>/scripts/cm_exec.sh" report -f json
+bash "<skill-dir>/scripts/cm_exec.sh" report -f table
 
 # 3. Token Telemetry, Context Caching & Model Invocation Metrics (when user asks for token/model stats)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" stats
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" stats --json
+bash "<skill-dir>/scripts/cm_exec.sh" stats
+bash "<skill-dir>/scripts/cm_exec.sh" stats --json
 
 # 4. Workspace Housekeeping & Cache Purging (when user asks to clean temporary artifacts)
-bash "${PLUGIN_DIR}/scripts/cm_exec.sh" clean
+bash "<skill-dir>/scripts/cm_exec.sh" clean
 ```
 
 ### Environment Diagnostic Health Check
 When the user asks to verify the CodeMender plugin environment, credentials, or toolchain readiness:
 ```bash
-bash "${PLUGIN_DIR}/scripts/check_env.sh"
+bash "<skill-dir>/scripts/check_env.sh"
 ```
 
-Once findings are verified, transition to **`codemender-remediate`** ([skills/codemender-remediate/SKILL.md](../codemender-remediate/SKILL.md)) to generate verified patches.
+Once findings are verified, switch to the **`codemender-remediate`** skill to generate verified patches.
 
 ---
 
