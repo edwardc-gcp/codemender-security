@@ -13,6 +13,7 @@ Requires CodeMender CLI 0.16.0 or later.
   - Exits `0` clean, `1` blocking findings, or `2` tool error (cm returns `1` for both findings and errors), and writes `.codemender/last-diff-scan.json` plus a `.meta` file with the scanned path, staged tree, and exit code.
 - **Opt-in git hook (`scripts/cm_git_hook.sh`)**: Installs a pre-commit hook (staged changes) or a pre-push hook (pushed branch). It reuses an earlier staged scan of the same content, never overwrites existing hooks or writes into `core.hooksPath`, and doesn't block when the scan can't run unless `CM_HOOK_STRICT=1`.
 - **Intent-based scan routing**: The audit skill picks diff scans for local changes, quick scans for module triage, and deep scans (the slow 0.16.0 default) only for full audits.
+- **Long-running scans**: The audit skill tells agents to run diff scans as long-running commands (one took about 9 minutes in testing) instead of retrying them.
 
 ### Remediation & Verification
 - **Checkpoint commit instead of `git stash`**: `cm fix` still resets its workspace in 0.16.0, so `cm_remediate_loop.sh` commits uncommitted work as a `wip(cm)` checkpoint first and restores it as uncommitted changes on exit (`--keep-commits` keeps the commits).

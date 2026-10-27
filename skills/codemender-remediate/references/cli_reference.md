@@ -99,7 +99,7 @@ How to read the results (observed with cm 0.16.0):
 * **Report**: `--format json` writes a top-level JSON array of findings (`[]` when clean) with absolute `file_path` values. See `finding_format.md` in the `codemender-audit` skill.
 * **State**: diff scans don't change the statuses in `state.db`. After the code is fixed and a re-scan is clean, `cm report` still lists the old findings (for example as `OPEN` or `VERIFIED`). Treat the latest diff report as the source of truth, and use its `--format sarif --output` file for a current-state SARIF.
 * **File selection**: diff mode scans every changed tracked file, whatever `scan.extensions.include` says (for example, a `.gitignore` edited by `cm verify`).
-* **Cost**: in a small test repository, each diff scan took about 1 to 6 minutes and 70k to 180k tokens, compared with about 1.4M tokens for one `cm verify` and 3.2M for one `cm fix`.
+* **Cost**: in a small test repository, each diff scan took about 1.5 to 9 minutes (files are scanned in parallel, so the slowest file sets the pace) and 70k to 180k tokens, compared with about 1.4M tokens for one `cm verify` and 3.2M for one `cm fix`.
 
 The bundled wrapper returns `0` (clean), `1` (blocking findings), or `2` (tool or environment error) and writes `.codemender/last-diff-scan.json`:
 

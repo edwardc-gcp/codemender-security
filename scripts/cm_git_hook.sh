@@ -97,7 +97,7 @@ install_hook() {
     echo "exec ${line}"
   } > "${hook_file}" && chmod +x "${hook_file}" || die "Cannot write ${hook_file}."
   echo "✅ Installed the CodeMender ${hook} hook: ${hook_file}"
-  echo "   Each ${verb} with source changes now runs a diff scan (usually 1 to 6 minutes, and it uses tokens)."
+  echo "   Each ${verb} with source changes now runs a diff scan (often several minutes, and it uses tokens)."
   if [ "${hook}" = "pre-commit" ]; then
     echo "   Run cm_diff_scan.sh --scope staged before committing, and the hook reuses that result."
   fi

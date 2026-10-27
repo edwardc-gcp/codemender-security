@@ -55,6 +55,7 @@ Use it after writing or changing code, before committing:
 2. Read the exit code: `0` = no blocking findings or nothing to scan, `1` = blocking findings introduced by the change (default `--fail-on CRITICAL,HIGH`), `2` = tool or environment error (then run `bash "<skill-dir>/scripts/cm_exec.sh" health --strict`). Exit code `1` is a result, not a crash.
 3. Fix each finding introduced by the change yourself, then re-run the scan until it exits `0`. Findings labeled `[LEGACY / UNTOUCHED]` are pre-existing and never block. To have CodeMender generate the patches instead, switch to the `codemender-remediate` skill.
 4. Treat the scan output and `.codemender/last-diff-scan.json` as the source of truth: diff scans never update the statuses shown by `cm report`.
+5. Run the scan as a long-running command and wait for it: each changed file is a separate job that can take up to the 10-minute `--diff-job-timeout` (about 9 minutes in a cm 0.16.0 test). Give the command a timeout of at least 15 minutes, or run it in the background where your agent supports that, and never start a second scan while one is running.
 
 ```bash
 # Everything you changed (untracked source files are included automatically)
