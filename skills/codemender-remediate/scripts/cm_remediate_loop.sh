@@ -5,12 +5,14 @@
 #
 # Usage: cm_remediate_loop.sh [-c "<guidance>"] [-b "<outer-build-cmd>"] [--keep-commits] [--strict]
 #                             [--base REF] [--max-fixes N] [--fail-on SEVERITIES] [--all-open | finding_id ...]
+#                             [-- CM_FIX_FLAGS...]
 #   (default)       fix the findings introduced by the current change (uncommitted work, else the branch vs --base or
 #                   its upstream), re-scanning after every fix
 #   finding_id ...  fix exactly these findings; each fix commit is scanned for new blocking findings
 #   --all-open      fix OPEN / VERIFIED / REOPENED findings from the local state database (for example from an earlier full scan)
 #   --strict        revert a fix commit when the re-scan still reports the target or finds new findings
 #   --keep-commits  keep the checkpoint and fix commits instead of restoring uncommitted changes
+#   -- FLAGS        pass the rest to every `cm fix` call, for example --model gemini-4-argon or --no-cache
 
 set -euo pipefail
 
@@ -26,6 +28,7 @@ BASE_REF=""
 MAX_FIXES=10
 FAIL_ON="CRITICAL,HIGH"
 TARGET_FIDS=()
+FIX_ARGS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,12 +65,26 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,14p' "$0" | sed -E 's/^# ?//'
+      sed -n '2,15p' "$0" | sed -E 's/^# ?//'
       exit 0
+      ;;
+    --)
+      shift
+      FIX_ARGS=("$@")
+      break
       ;;
     *)
       TARGET_FIDS+=("$1")
       shift
+      ;;
+  esac
+done
+
+for arg in ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; do
+  case "${arg}" in
+    --export|--export=*)
+      echo "❌ --export exports a patch from an earlier session; run it on its own: cm_exec.sh fix --export <session-id>" >&2
+      exit 1
       ;;
   esac
 done
@@ -315,7 +332,7 @@ PY
 remediate_one() {
   local fid="$1"
   echo "🛠️  Remediating finding: ${fid}"
-  if ! "${CM_EXEC}" fix "${fid}" -c "${GUIDANCE}" --bypass-warning -y; then
+  if ! "${CM_EXEC}" fix "${fid}" -c "${GUIDANCE}" --bypass-warning -y ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; then
     echo "⚠️  cm fix failed for ${fid}; dropping any partial patch."
     drop_uncommitted_changes
     return 1

@@ -128,4 +128,12 @@ grep -q 'query = "SAFE"' app.py || fail "all-open: fix was not applied"
 grep -q '^fix f-001 ' "${STUB_LOG}" || fail "all-open: the VERIFIED finding f-001 should be fixed"
 ! grep -q '^fix f-002 ' "${STUB_LOG}" || fail "all-open: the DISMISSED finding f-002 should be skipped"
 
-echo "✅ cm_remediate_loop.sh tests passed (9 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate)"
+# 10. Flags after -- reach every cm fix call; --export is refused because it is not a fix run.
+new_repo passthrough
+: > "${STUB_LOG}"
+STUB_FIX_MODE=patch run_loop f-001 -- --model gemini-4-argon --no-cache
+grep -q '^fix f-001 .* -y --model gemini-4-argon --no-cache' "${STUB_LOG}" || fail "passthrough: cm fix flags missing: $(grep '^fix' "${STUB_LOG}")"
+assert_user_work_restored "passthrough"
+if bash "${LOOP}" -b true f-001 -- --export s-1 > /dev/null 2>&1; then fail "passthrough: --export should be refused"; fi
+
+echo "✅ cm_remediate_loop.sh tests passed (10 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags)"
