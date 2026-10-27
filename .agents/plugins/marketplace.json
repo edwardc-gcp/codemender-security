@@ -1,0 +1,20 @@
+{
+  "name": "codemender-security",
+  "interface": {
+    "displayName": "CodeMender Security"
+  },
+  "plugins": [
+    {
+      "name": "codemender-security",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Security"
+    }
+  ]
+}

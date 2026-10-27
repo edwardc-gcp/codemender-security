@@ -11,6 +11,12 @@ Built on the open [Agent Plugins specification](https://agent-plugins.org/), thi
 
 ## 🚀 Installation
 
+| Agent | Skills | Safety hook (`pre_tool_guard.sh`) | Always-on rule |
+| :--- | :--- | :--- | :--- |
+| Google Antigravity | ✅ | ✅ via [`hooks.json`](./hooks.json) | ✅ via [`rules/`](./rules/codemender-safety.md) |
+| Anthropic Claude Code | ✅ | ✅ via [`hooks/hooks.json`](./hooks/hooks.json) | — |
+| OpenAI Codex | ✅ | ✅ via [`hooks/hooks.json`](./hooks/hooks.json), after you trust it in `/hooks` | — |
+
 ### Google Antigravity (`agy`)
 Install directly via the Antigravity CLI:
 
@@ -19,21 +25,27 @@ agy plugin install https://github.com/edwardc-gcp/codemender-security.git
 ```
 
 > [!TIP]
-> You can also install via the Antigravity IDE UI under **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL**.
+> You can also install via the Antigravity IDE UI under **Settings** (`Cmd+,` / `Ctrl+,`) → **Plugins** → **Install from URL**, or clone the repository into your Antigravity plugins directory (for example `~/.gemini/config/plugins/codemender-security`) and restart.
 
 ### Anthropic Claude Code (`claude`)
-Install directly via the Claude Code CLI:
+This repository is also a Claude Code plugin marketplace ([`.claude-plugin/marketplace.json`](./.claude-plugin/marketplace.json)). Add it, then install the plugin:
 
 ```bash
-claude plugin install https://github.com/edwardc-gcp/codemender-security.git
+claude plugin marketplace add edwardc-gcp/codemender-security
+claude plugin install codemender-security@codemender-security
 ```
 
 ### OpenAI Codex (`codex`)
-Install directly via the OpenAI Codex CLI:
+This repository is also a Codex repo marketplace ([`.agents/plugins/marketplace.json`](./.agents/plugins/marketplace.json)). Add it from the CLI:
 
 ```bash
-codex plugin install https://github.com/edwardc-gcp/codemender-security.git
+codex plugin marketplace add edwardc-gcp/codemender-security
 ```
+
+Then open `/plugins`, install **CodeMender Security**, and start a new session. Codex skips plugin hooks until you review and trust them, so open `/hooks` and trust the bundled safety hook.
+
+> [!NOTE]
+> Codex hooks cannot prompt for approval yet. Commands that need explicit consent (`install_cm.sh`, `cm update`, `--unrestricted`) are therefore blocked in Codex with an explanation; run them yourself after reviewing them.
 
 ---
 
@@ -56,9 +68,10 @@ Before using the plugin, ensure your environment meets the following requirement
    *Ensure your active Google Cloud project has access to CodeMender on Gemini Enterprise Agent Platform.*
 
 3. **CodeMender CLI (`cm`) Installation & Updates**:
-   Review and run the bundled cross-platform installer script (requires `curl` and `unzip`), which checks the latest official release manifest, downloads the binary, and verifies its uncompressed SHA-256 checksum:
+   Ask your agent to *"check my CodeMender environment"*: the `codemender-audit` skill runs `check_env.sh` and asks for your consent before running the bundled cross-platform installer. To run the installer yourself (requires `curl` and `unzip`; it checks the latest official release manifest, downloads the binary, and verifies its uncompressed SHA-256 checksum):
    ```bash
-   bash ~/.gemini/config/plugins/codemender-security/scripts/install_cm.sh
+   git clone https://github.com/edwardc-gcp/codemender-security.git
+   bash codemender-security/scripts/install_cm.sh
    ```
    *Re-running `install_cm.sh` automatically checks for newer remote releases and upgrades `cm` when available (or run `cm update` manually).*
 
@@ -81,8 +94,8 @@ Before using the plugin, ensure your environment meets the following requirement
 ### Safety Rules, Hooks & Execution Wrappers
 - **[`codemender-safety.md`](./rules/codemender-safety.md)** *(Always-On Routing Stub)*:
   Lightweight (~75-token) always-on rule that enforces wrapper execution and requires explicit operator confirmation before running `install_cm.sh` or `cm verify --unrestricted`.
-- **[`hooks.json`](./hooks.json) & [`pre_tool_guard.sh`](./scripts/pre_tool_guard.sh)** *(Deterministic `PreToolUse` Interceptor)*:
-  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh` and `--unrestricted` verification.
+- **[`hooks.json`](./hooks.json), [`hooks/hooks.json`](./hooks/hooks.json) & [`pre_tool_guard.sh`](./scripts/pre_tool_guard.sh)** *(Deterministic `PreToolUse` Interceptor)*:
+  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh` and `--unrestricted` verification. Antigravity loads `hooks.json`; Claude Code and Codex load `hooks/hooks.json`.
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Isolates `.codemender/` and `HOME="${PROJECT_ROOT}/.cache"` per repository, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG` (ADC), prevents `.codemender/config.yaml` overwrites, and registers `.codemender/` and `.cache/` in `.git/info/exclude`.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:

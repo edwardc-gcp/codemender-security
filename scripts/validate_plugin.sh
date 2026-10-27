@@ -164,6 +164,21 @@ assert any(
 ), "hooks/hooks.json must run ${CLAUDE_PLUGIN_ROOT}/scripts/pre_tool_guard.sh for the Bash tool"
 print("✅ hooks/hooks.json valid (Claude Code & Codex)")
 
+with open("plugin.json") as fh:
+    plugin_name = json.load(fh)["name"]
+with open(".claude-plugin/marketplace.json") as fh:
+    market = json.load(fh)
+assert market.get("name") and market.get("owner", {}).get("name"), "Claude marketplace needs name and owner.name"
+assert any(p.get("name") == plugin_name and p.get("source") == "./" for p in market.get("plugins", [])), "Claude marketplace must list this plugin with source ./"
+print("✅ .claude-plugin/marketplace.json valid (Claude Code)")
+with open(".agents/plugins/marketplace.json") as fh:
+    market = json.load(fh)
+for p in market.get("plugins", []):
+    assert p["source"]["path"].startswith("./"), "Codex marketplace source.path must start with ./"
+    assert p["policy"]["installation"] and p["policy"]["authentication"] and p["category"], "Codex marketplace entries need policy and category"
+assert any(p.get("name") == plugin_name for p in market.get("plugins", [])), "Codex marketplace must list this plugin"
+print("✅ .agents/plugins/marketplace.json valid (Codex)")
+
 manifests = [
     "plugin.json",
     "gemini-extension.json",
@@ -199,6 +214,7 @@ python3 -c '
 import os, re, sys
 
 md_files = [
+    "README.md",
     "SKILL.md",
     "CLAUDE.md",
     "skills/codemender-audit/SKILL.md",
