@@ -32,15 +32,19 @@ if [ -n "${EXCLUDE_FILE}" ] && [ -d "$(dirname "${EXCLUDE_FILE}")" ]; then
   done
 fi
 
-# 2. Zero Data-Loss Guard for `cm init`
+# 2. Zero Data-Loss Guard for `cm init` (`cm init --verify` only reads, so it always runs)
 if [ "${1:-}" = "init" ]; then
+  VERIFY_ONLY=false
   for arg in "$@"; do
     if [ "$arg" = "-y" ] || [ "$arg" = "--yes" ]; then
       echo "❌ Security Block: Never pass -y/--yes to 'cm init' (prevents overwriting custom .codemender/config.yaml)." >&2
       exit 1
     fi
+    if [ "$arg" = "--verify" ]; then
+      VERIFY_ONLY=true
+    fi
   done
-  if [ -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
+  if [ "${VERIFY_ONLY}" = false ] && [ -f "${PROJECT_ROOT}/.codemender/config.yaml" ]; then
     echo "ℹ️  ${PROJECT_ROOT}/.codemender/config.yaml already exists; skipping 'cm init'."
     exit 0
   fi
