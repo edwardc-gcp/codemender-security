@@ -93,13 +93,15 @@ Before using the plugin, ensure your environment meets the following requirement
 
 ### Safety Rules, Hooks & Execution Wrappers
 - **[`codemender-safety.md`](./rules/codemender-safety.md)** *(Always-On Routing Stub)*:
-  Lightweight (~75-token) always-on rule that enforces wrapper execution and requires explicit operator confirmation before running `install_cm.sh` or `cm verify --unrestricted`.
+  Lightweight (~75-token) always-on rule that enforces wrapper execution and requires explicit operator confirmation before running `install_cm.sh`, `cm_git_hook.sh install`, or `cm verify --unrestricted`.
 - **[`hooks.json`](./hooks.json), [`hooks/hooks.json`](./hooks/hooks.json) & [`pre_tool_guard.sh`](./scripts/pre_tool_guard.sh)** *(Deterministic `PreToolUse` Interceptor)*:
-  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh` and `--unrestricted` verification. Antigravity loads `hooks.json`; Claude Code and Codex load `hooks/hooks.json`.
+  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh`, `cm_git_hook.sh install`, and `--unrestricted` verification. Antigravity loads `hooks.json`; Claude Code and Codex load `hooks/hooks.json`.
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Isolates `.codemender/` and `HOME="${PROJECT_ROOT}/.cache"` per repository, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG` (ADC), prevents `.codemender/config.yaml` overwrites, and registers `.codemender/` and `.cache/` in `.git/info/exclude`.
 - **[`cm_diff_scan.sh`](./scripts/cm_diff_scan.sh)** *(Local Change Scanner)*:
   Runs CodeMender diff mode on your working tree, staged changes, branch, or last commit; includes untracked source files (which `cm find --diff` alone ignores) through a temporary `git add -N`; skips the scan when no source file changed; and exits `0` clean / `1` blocking findings / `2` error.
+- **[`cm_git_hook.sh`](./scripts/cm_git_hook.sh)** *(Opt-In Git Hook)*:
+  Installs a pre-commit hook that scans the staged changes (or, with `--pre-push`, a pre-push hook that scans the pushed branch) and blocks on `CRITICAL`/`HIGH` findings. It reuses an earlier `cm_diff_scan.sh --scope staged` result for the same content, never overwrites existing hooks, and doesn't block when the scan can't run. Skip once with `--no-verify`; keep a CI gate as well.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
   Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, and a re-scan of the change after every fix to pick the next target and catch regressions.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
@@ -129,6 +131,8 @@ Once installed, simply prompt your coding agent using natural language. The agen
 1. **Diff Scan**: The agent runs `cm_diff_scan.sh`, which scans only the changed code plus its direct callers and callees (new untracked files included) and skips pre-existing issues in untouched code.
 2. **Fix & Re-Scan**: For each finding the change introduced, the agent fixes the code and re-runs the scan until it exits `0`.
 3. **Commit**: Once the scan is clean, commit as usual.
+
+To scan every commit automatically, ask the agent to *"install the CodeMender pre-commit hook"* (it asks for your confirmation first). The hook scans the staged changes before each commit and reuses the agent's latest scan when the content hasn't changed.
 
 ---
 

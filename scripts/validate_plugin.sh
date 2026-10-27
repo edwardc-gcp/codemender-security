@@ -17,7 +17,7 @@ fi
 echo "✅ Zero hardcoded user paths in repository files"
 
 # 1. Shell Script Syntax Verification
-for sh_file in scripts/install_cm.sh scripts/cm_exec.sh scripts/cm_diff_scan.sh scripts/cm_remediate_loop.sh scripts/pre_tool_guard.sh scripts/check_env.sh scripts/sync_skill_scripts.sh scripts/validate_plugin.sh; do
+for sh_file in scripts/install_cm.sh scripts/cm_exec.sh scripts/cm_diff_scan.sh scripts/cm_git_hook.sh scripts/cm_remediate_loop.sh scripts/pre_tool_guard.sh scripts/check_env.sh scripts/sync_skill_scripts.sh scripts/validate_plugin.sh; do
   bash -n "${sh_file}"
   chmod +x "${sh_file}"
   echo "✅ Shell syntax & executable bit valid: ${sh_file}"
@@ -77,6 +77,10 @@ cases = [
     ("cm report -f json; echo --unrestricted", "allow"),
     ("bash scripts/install_cm.sh", "force_ask"),
     ("cm update", "force_ask"),
+    ("bash \"/opt/p/skills/codemender-audit/scripts/cm_git_hook.sh\" install", "force_ask"),
+    ("bash scripts/cm_git_hook.sh install --pre-push", "force_ask"),
+    ("bash scripts/cm_git_hook.sh status", "allow"),
+    ("bash scripts/cm_git_hook.sh uninstall", "allow"),
     ("cm find . -y", "deny"),
     ("cm build --force", "deny"),
     ("timeout 60 cm find . -y", "deny"),
@@ -121,10 +125,11 @@ for minimal in (False, True):
         assert run(build("cm init -y"), minimal) == "deny"
         assert run(build("cm verify 123 --unrestricted"), minimal) == consent
         assert run(build("bash scripts/install_cm.sh"), minimal) == consent
+        assert run(build("bash scripts/cm_git_hook.sh install"), minimal) == consent
         assert run(build("cm find . -y"), minimal) == "deny"
         assert run(build("bash /opt/p/skills/codemender-audit/scripts/cm_exec.sh find . --diff -y"), minimal) == "allow"
         assert run(build("ls -la"), minimal) == "allow"
-        count += 6
+        count += 7
     assert run(claude("cm update"), minimal, {"PLUGIN_ROOT": "/opt/p"}) == "deny"
     count += 1
 print(f"✅ Claude Code / Codex hook contract tests passed ({count}/{count} assertions)")

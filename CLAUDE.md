@@ -30,6 +30,9 @@ bash "<plugin-root>/scripts/cm_remediate_loop.sh" -c "Apply minimal security fix
 
 # 6. Export SARIF report
 bash "<plugin-root>/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
+
+# 7. Optional git hook, only when the user asks and confirms (scans staged changes on every commit)
+bash "<plugin-root>/scripts/cm_git_hook.sh" install
 ```
 
 ---
@@ -39,6 +42,6 @@ bash "<plugin-root>/scripts/cm_exec.sh" report -f sarif > codemender-results.sar
 1. **Checkpoint Commit Lifecycle**: `cm_remediate_loop.sh` checks `git status --porcelain` (excluding `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, `*.sarif`), commits uncommitted work as a `wip(cm)` checkpoint before `cm fix` (whose workspace reset would otherwise delete or hide it), and on exit resets back to the original base so the work returns uncommitted with the fixes applied (`--keep-commits` keeps the commits instead).
 2. **Tiered Build Validation & Outer Hard Gate**: Dynamically probes `pytest`, `python3 -m py_compile`, `node --check`, `go test`, or `cargo check`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`), set `build.command: "true"` in `config.yaml` and enforce `OUTER_BUILD_CMD` in the outer shell before committing.
 3. **Autofix-Style Atomic Commit**: Each fix commit contains changes to files already in the repository plus new source files the fix adds; other new files (test output, logs) and CodeMender's own ignore-file edits stay out, and runtime/cache paths are ignored via `.git/info/exclude` (registered by `cm_exec.sh`). Commits use `--no-verify`, and the loop re-scans the change with `cm_diff_scan.sh` after every fix (`--strict` reverts fixes the re-scan does not confirm).
-4. **Sandboxing & `--unrestricted` Warning**: `--unrestricted` disables both the filesystem sandbox AND command policy denylist (`full system access`). Require explicit per-invocation human confirmation. Never run `install_cm.sh` without explicit user permission.
+4. **Sandboxing & `--unrestricted` Warning**: `--unrestricted` disables both the filesystem sandbox AND command policy denylist (`full system access`). Require explicit per-invocation human confirmation. Never run `install_cm.sh` or `cm_git_hook.sh install` without explicit user permission.
 5. **Triage Integrity**: When a dynamic PoC exploit fails during `cm verify`, retain the finding as `OPEN / UNCONFIRMED`. Never classify a failed PoC as a false positive without manual source verification.
 6. **Zero Data-Loss Init**: Never pass `-y` to `cm init`.

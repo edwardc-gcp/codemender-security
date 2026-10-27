@@ -103,6 +103,13 @@ if [[ "${CMD}" == *"install_cm.sh"* ]] || (printf '%s\n' "${CMD}" | grep -qE '(^
   exit 0
 fi
 
+# Rule 2c: Force interactive user confirmation before installing the opt-in git hook (it changes every future commit or push)
+if printf '%s\n' "${CMD}" | grep -qE 'cm_git_hook\.sh[^[:space:];&|]*[[:space:]]+install([[:space:]]|[;&|]|$)'; then
+  REASON="Installing the CodeMender git hook changes every future commit (or push) in this repository: each one with source changes runs a diff scan that takes minutes and uses tokens. Explicit user permission is required."
+  emit_response "force_ask" "${REASON}"
+  exit 0
+fi
+
 # Rule 3: Block unscoped stateful `cm` invocations (`find`, `verify`, `fix`, `init`, `vcs`, `build`, `report import`)
 # Catches prefixes like `env cm find`, `timeout 60 cm find`, etc., while allowing `cm version`, `cm --help`, `cm <subcmd> --help`, `cm report -f json`.
 if printf '%s\n' "${CMD}" | grep -qE '(^|[^a-zA-Z0-9_/-])cm[[:space:]]+(find|verify|fix|init|vcs|build|report[[:space:]]+import)([[:space:]]|$)' && ! printf '%s\n' "${CMD}" | grep -qE '[[:space:]](-h|--help)([[:space:]]|$)'; then
