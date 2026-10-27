@@ -89,7 +89,7 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`codemender-audit`](./skills/codemender-audit)**:
   Full-codebase AST and taint scanning, differential git scanning, external SAST report ingestion (`cm report import -f findings.sarif`), and 2-Tier verification (`cm verify --skip-exploit-verification` for fast semantic verification or sandboxed dynamic PoC execution).
 - **[`codemender-remediate`](./skills/codemender-remediate)**:
-  Domain-guided patch synthesis (`cm fix`), automated regression testing, exploit re-attack validation, and an atomic multi-vulnerability remediation loop with enforced outer-shell build gates and automatic `git stash` restoration.
+  Domain-guided patch synthesis (`cm fix`), automated regression testing, exploit re-attack validation, and an atomic multi-vulnerability remediation loop with enforced outer-shell build gates and checkpoint-protected uncommitted work.
 
 ### Safety Rules, Hooks & Execution Wrappers
 - **[`codemender-safety.md`](./rules/codemender-safety.md)** *(Always-On Routing Stub)*:
@@ -99,7 +99,7 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Isolates `.codemender/` and `HOME="${PROJECT_ROOT}/.cache"` per repository, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG` (ADC), prevents `.codemender/config.yaml` overwrites, and registers `.codemender/` and `.cache/` in `.git/info/exclude`.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
-  Automates non-destructive `git stash push -u` tracking, declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, post-commit AST line reconciliation, and automatic `git stash pop` restoration.
+  Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis, and post-commit AST line reconciliation.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
   Instantly verifies CLI version, Google Cloud ADC authentication status, active project, and workspace data protection in a structured ASCII summary.
 
@@ -117,7 +117,7 @@ Once installed, simply prompt your coding agent using natural language. The agen
 1. **Discovery & Scoping**: The agent initializes `.codemender/` and scans the codebase for high-risk vulnerabilities (hardcoded credentials, open CORS, SQL injection, unsanitized inputs).
 2. **2-Tier Verification**: Uses `cm verify --skip-exploit-verification` for fast 15–25s semantic taint verification (or isolated sandbox PoC execution) to eliminate false positives.
 3. **Adaptive Remediation & Hard Gate**: Synthesizes context-aware patches (`cm fix`), validates the build/syntax in the outer shell, and reverts any patch that breaks compilation.
-4. **Automatic Stash Restoration**: Commits validated security fixes (`git add -A && git commit`) and restores any pre-existing uncommitted user files (`git stash pop`).
+4. **Checkpoint Protection**: Commits uncommitted work as a checkpoint before `cm fix` (whose workspace reset would otherwise delete it), commits each validated fix, then restores everything as uncommitted changes with the fixes applied (or keeps the commits with `--keep-commits`).
 
 ---
 

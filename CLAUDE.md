@@ -24,7 +24,7 @@ bash "<plugin-root>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verif
 # 4. Ingest Third-Party SARIF / Simple JSON
 bash "<plugin-root>/scripts/cm_exec.sh" report import -f third-party-findings.json
 
-# 5. Atomic multi-vulnerability remediation loop (Tracked Stash + Outer Build Gate + Pathspec Commit + AST Reconcile)
+# 5. Atomic multi-vulnerability remediation loop (Checkpoint + Outer Build Gate + Safe Commit + AST Reconcile)
 bash "<plugin-root>/scripts/cm_remediate_loop.sh" -c "Apply minimal security fix preserving API behavior"
 
 # 6. Export SARIF report
@@ -35,9 +35,9 @@ bash "<plugin-root>/scripts/cm_exec.sh" report -f sarif > codemender-results.sar
 
 ## Operational Guardrails
 
-1. **Non-Destructive Tracked Stash Lifecycle**: `cm_remediate_loop.sh` checks `git status --porcelain` (excluding `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, `*.sarif`), records `CM_STASH_MSG="cm-pre-fix-backup-$(date +%s)"`, and restores the exact `STASH_REF` via `git stash pop "${STASH_REF}"` on exit—never popping unrelated user stashes.
+1. **Checkpoint Commit Lifecycle**: `cm_remediate_loop.sh` checks `git status --porcelain` (excluding `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, `*.sarif`), commits uncommitted work as a `wip(cm)` checkpoint before `cm fix` (whose workspace reset would otherwise delete or hide it), and on exit resets back to the original base so the work returns uncommitted with the fixes applied (`--keep-commits` keeps the commits instead).
 2. **Tiered Build Validation & Outer Hard Gate**: Dynamically probes `pytest`, `python3 -m py_compile`, `node --check`, `go test`, or `cargo check`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`), set `build.command: "true"` in `config.yaml` and enforce `OUTER_BUILD_CMD` in the outer shell before committing.
-3. **Pathspec-Protected Atomic Commit (`git add -A`)**: Stages modified and newly created helper files while excluding `$HOME` cache artifacts (`git add -A -- ':!.codemender' ':!.cm_project' ':!.exploit' ':!.cache' ':!.npm' ':!.cargo' ':!.local' ':!.config' ':!*.sarif'`), and runs `cm find . --diff=HEAD~1 -y` inside the loop after every commit.
+3. **Artifact-Safe Atomic Commit (`git add -A`)**: Stages modified and newly created helper files; runtime/cache paths stay out via `.git/info/exclude` (registered by `cm_exec.sh`) and `*.sarif` via `git add -A -- . ':!*.sarif'`. Commits use `--no-verify`, and the loop runs `cm find . --diff=HEAD~1 -y` after every commit.
 4. **Sandboxing & `--unrestricted` Warning**: `--unrestricted` disables both the filesystem sandbox AND command policy denylist (`full system access`). Require explicit per-invocation human confirmation. Never run `install_cm.sh` without explicit user permission.
 5. **Triage Integrity**: When a dynamic PoC exploit fails during `cm verify`, retain the finding as `OPEN / UNCONFIRMED`. Never classify a failed PoC as a false positive without manual source verification.
 6. **Zero Data-Loss Init**: Never pass `-y` to `cm init`.

@@ -250,3 +250,10 @@ for md in md_files:
             sys.exit(1)
 print("✅ All Markdown links verified (0 broken paths).")
 '
+
+# 7. Integration Tests with a Stub cm (no network, no tokens)
+bash -n scripts/tests/stub_cm
+for test_script in scripts/tests/test_*.sh; do
+  bash -n "${test_script}"
+  bash "${test_script}"
+done

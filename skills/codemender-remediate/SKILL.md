@@ -16,15 +16,15 @@ Every helper script used below ships inside this skill's own [`scripts/`](script
 
 ## Phase 0: Non-Destructive VCS & Build Gate Architecture
 
-> **CRITICAL VCS WARNING**: `cm fix` executes `git checkout HEAD -- . && git clean -fd` on startup. Any untracked or uncommitted user files not protected by `.git/info/exclude` or stashed beforehand will be **permanently deleted**.
+> **CRITICAL VCS WARNING**: `cm fix` runs `git checkout HEAD -- . && git clean -fd` on its workspace at startup (still true in cm 0.16.0, where only the sandbox stopped it). Untracked or uncommitted files that are neither committed beforehand nor ignored via `.git/info/exclude` can be **permanently deleted**, and stashing them would hide the very code that needs fixing.
 
 To eliminate cross-subshell variable loss (`PROJECT_ROOT=""`), `.cache`/`.npm` commit leakage, and accidental `git clean -fd` data loss, **always execute remediation via [scripts/cm_remediate_loop.sh](scripts/cm_remediate_loop.sh) or [scripts/cm_exec.sh](scripts/cm_exec.sh)**.
 
 ### What `scripts/cm_remediate_loop.sh` Automatically Guarantees:
 1. **Stateless Workspace & `.git/info/exclude` Shield**: Scopes `HOME="${PROJECT_ROOT}"`, forwards `GIT_CONFIG_GLOBAL` and `CLOUDSDK_CONFIG`, and excludes `.codemender/`, `.cm_project`, `.exploit/`, `.cache/`, `.npm/`, `.cargo/`, `.local/`, `.config/`, and `*.sarif`.
-2. **Tracked Pre-Fix Stash (`CM_STASH_MSG`)**: Only stashes if dirty user files exist, records the exact `CM_STASH_MSG` timestamp, and uses an `EXIT` trap to `git stash pop "${STASH_REF}"` for that specific stash entry—never popping unrelated user stashes (`stash@{0}`).
+2. **Checkpoint Commit for Uncommitted Work**: If the working tree has uncommitted changes, the loop commits them as `wip(cm): checkpoint before security remediation` before the first `cm fix`, so the fix can see the code and the workspace reset cannot delete it. On exit (including failures and interrupts) it drops leftover patches and resets back to the original base: your changes come back uncommitted, now including the applied fixes (previously staged changes come back unstaged). Pass `--keep-commits` to keep the checkpoint and fix commits for review instead.
 3. **Outer-Shell Build Hard Gate (`OUTER_BUILD_CMD`)**: Dynamically probes `pytest`, `python3 -m py_compile`, `node --check`, `go test`, or `cargo check`. If `cm fix` produces a patch that fails the outer build gate, it immediately reverts (`git checkout HEAD -- . && git clean -fd`).
-4. **Pathspec-Filtered `git add -A` & Differential AST Reconciliation**: Stages newly created security helper files while excluding `:!.codemender`, `:!.cache`, `:!.npm`, `:!.config`, and `:!*.sarif`, and runs `cm find . --diff=HEAD~1 -y` inside the loop after every commit so subsequent patches reconcile modified files and 1-hop callers without rescanning the entire repository.
+4. **Artifact-Safe Commits & Differential AST Reconciliation**: Stages modified and newly created files with `git add -A` (runtime/cache paths such as `.codemender/`, `.exploit/`, and `.cache/` stay out because `cm_exec.sh` registers them in `.git/info/exclude`; `*.sarif` is excluded explicitly), commits with `--no-verify` because the loop runs its own gates, and runs `cm find . --diff=HEAD~1 -y` inside the loop after every commit so subsequent patches reconcile modified files and 1-hop callers without rescanning the entire repository.
 
 ---
 
@@ -42,6 +42,13 @@ bash "<skill-dir>/scripts/cm_remediate_loop.sh" \
   -c "Replace string interpolation with parameterized SQL queries" \
   -b "pytest tests/security/" \
   <finding-id-1> <finding-id-2>
+```
+
+### Option C: Keep the Checkpoint and Fix Commits
+Use this when the user wants reviewable commits (for example, to open a pull request) instead of getting their work back as uncommitted changes:
+```bash
+bash "<skill-dir>/scripts/cm_remediate_loop.sh" --keep-commits \
+  -c "Apply idiomatic security patch preserving public function signatures and HTTP status codes"
 ```
 
 ---

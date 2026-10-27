@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
+#   STUB_FIX_MODE=patch|reset-then-patch|fail   behavior of `cm fix` (default: patch)
+#   STUB_LOG=<file>                              append every invocation's arguments to this file
+if [ -n "${STUB_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "${STUB_LOG}"
+fi
+
+case "${1:-}" in
+  report)
+    printf '[{"finding_id": "f-001", "status": "OPEN", "severity": "HIGH", "title": "SQL injection in app.py", "file_path": "%s/app.py", "start_line": 1, "end_line": 1}]\n' "$(pwd)"
+    ;;
+  fix)
+    case "${STUB_FIX_MODE:-patch}" in
+      patch)
+        sed -i.bak 's/UNSAFE/SAFE/' app.py && rm -f app.py.bak
+        ;;
+      reset-then-patch)
+        # What Phase 0 observed in cm 0.16.0: `cm fix` resets its workspace before patching.
+        git checkout -q HEAD -- . && git clean -fdq
+        sed -i.bak 's/UNSAFE/SAFE/' app.py && rm -f app.py.bak
+        ;;
+      fail)
+        echo "# half-applied patch" >> app.py
+        exit 1
+        ;;
+    esac
+    ;;
+  --version)
+    echo "cm version 0.16.0 (stub)"
+    ;;
+  *)
+    exit 0
+    ;;
+esac

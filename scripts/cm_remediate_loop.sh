@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Atomic Non-Destructive Multi-Vulnerability Remediation Loop for CodeMender (cm)
-# Safeguards uncommitted work via tracked git stash, enforces outer-shell build hard gates,
+# Protects uncommitted work with a checkpoint commit, enforces outer-shell build hard gates,
 # prevents committing $HOME cache artifacts, and reconciles AST line numbers after every commit.
 
 set -euo pipefail
@@ -10,6 +10,7 @@ CM_EXEC="${SCRIPT_DIR}/cm_exec.sh"
 
 GUIDANCE="Apply minimal security fix preserving existing API behavior"
 OUTER_BUILD_CMD=""
+KEEP_COMMITS=false
 TARGET_FIDS=()
 
 while [ $# -gt 0 ]; do
@@ -22,8 +23,12 @@ while [ $# -gt 0 ]; do
       OUTER_BUILD_CMD="${2:-}"
       shift 2
       ;;
+    --keep-commits)
+      KEEP_COMMITS=true
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $(basename "$0") [-c \"<guidance>\"] [-b \"<outer-build-cmd>\"] [finding_id ...]"
+      echo "Usage: $(basename "$0") [-c \"<guidance>\"] [-b \"<outer-build-cmd>\"] [--keep-commits] [finding_id ...]"
       exit 0
       ;;
     *)
@@ -82,25 +87,56 @@ detect_outer_build_cmd() {
 
 OUTER_BUILD_CMD="${OUTER_BUILD_CMD:-$(detect_outer_build_cmd)}"
 
-# 2. Tracked Pre-Fix Stash (P1-4 safe stash lifecycle)
-CM_STASH_MSG=""
-restore_stash() {
-  if [ -n "${CM_STASH_MSG}" ]; then
-    local stash_ref
-    stash_ref="$(git stash list | grep -F "${CM_STASH_MSG}" | head -n 1 | cut -d: -f1 || true)"
-    if [ -n "${stash_ref}" ]; then
-      echo "🔄 Restoring tracked stash ${stash_ref} (${CM_STASH_MSG})..."
-      git stash pop "${stash_ref}" || echo "⚠️ Merge conflict restoring ${stash_ref}! Your work is safely preserved in: ${stash_ref} (${CM_STASH_MSG})"
+# 2. Checkpoint commit for uncommitted work
+# `cm fix` resets its workspace with `git checkout HEAD -- . && git clean -fd` (observed in cm 0.16.0, where only the
+# sandbox kept it from succeeding), and stashing would hide the very code that needs fixing. Committing the work first
+# keeps it visible to `cm fix` and makes every reset harmless. At exit the loop resets back to the original base, so the
+# user's changes come back uncommitted (now including the applied fixes) unless --keep-commits is given.
+CLEAN_EXCLUDES=(-e .codemender -e .cm_project -e .exploit -e .cache -e .npm -e .cargo -e .local -e .config)
+drop_uncommitted_changes() {
+  git checkout -q HEAD -- . 2>/dev/null || true
+  git clean -fdq "${CLEAN_EXCLUDES[@]}" 2>/dev/null || true
+}
+
+CHECKPOINT_BASE=""
+finish() {
+  local rc=$?
+  trap - EXIT
+  if [ -n "${CHECKPOINT_BASE}" ]; then
+    # Anything still uncommitted here is a leftover patch from cm fix; the user's work is safe in the checkpoint.
+    drop_uncommitted_changes
+    if [ "${KEEP_COMMITS}" = true ]; then
+      echo "ℹ️  Kept the checkpoint and security fix commits on top of $(git rev-parse --short "${CHECKPOINT_BASE}")."
+    else
+      git reset -q --mixed "${CHECKPOINT_BASE}"
+      echo "🔄 Restored your uncommitted changes (now including any applied security fixes) on top of $(git rev-parse --short "${CHECKPOINT_BASE}"). Previously staged changes are now unstaged."
     fi
   fi
+  exit "${rc}"
 }
-trap restore_stash EXIT
+trap finish EXIT
+trap 'exit 130' INT TERM
+
+if ! git rev-parse --verify -q HEAD >/dev/null; then
+  echo "❌ cm fix needs a repository with at least one commit." >&2
+  exit 1
+fi
+
+# Let the wrapper register CodeMender's runtime paths in .git/info/exclude before anything is staged.
+"${CM_EXEC}" --version >/dev/null 2>&1 || true
 
 DIRTY_FILES="$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.cm_project$|\.exploit/|\.cache/|\.npm/|\.cargo/|\.local/|\.config/|.*\.sarif$)' || true)"
 if [ -n "${DIRTY_FILES}" ]; then
-  CM_STASH_MSG="cm-pre-fix-backup-$(date +%s)"
-  echo "📌 Saving uncommitted work to tracked git stash: ${CM_STASH_MSG}"
-  git stash push -u -m "${CM_STASH_MSG}"
+  BASE_SHA="$(git rev-parse HEAD)"
+  git add -A -- . ':!*.sarif'
+  if git commit -q --no-verify -m "wip(cm): checkpoint before security remediation"; then
+    CHECKPOINT_BASE="${BASE_SHA}"
+    echo "📌 Checkpointed uncommitted work as $(git rev-parse --short HEAD) so cm fix can see it and its workspace reset cannot delete it."
+  else
+    git reset -q
+    echo "❌ Could not create the checkpoint commit (check git user.name / user.email). Nothing was changed." >&2
+    exit 1
+  fi
 fi
 
 # 3. Resolve actionable findings from `cm report -f json` (Supports jq, python3, or pure awk fallback)
@@ -162,22 +198,16 @@ for fid in "${TARGET_FIDS[@]}"; do
     echo "🧪 Running outer-shell build hard gate: ${OUTER_BUILD_CMD}"
     if ! eval "${OUTER_BUILD_CMD}"; then
       echo "❌ Outer build validation failed for ${fid}! Reverting broken patch..."
-      git checkout HEAD -- . && git clean -fd
+      drop_uncommitted_changes
       continue
     fi
-    # Stage code & newly created helper files while strictly excluding HOME cache/runtime artifacts (P0-3)
-    git add -A -- \
-      ':!.codemender' \
-      ':!.cm_project' \
-      ':!.exploit' \
-      ':!.cache' \
-      ':!.npm' \
-      ':!.cargo' \
-      ':!.local' \
-      ':!.config' \
-      ':!*.sarif'
+    # Stage code & newly created helper files. Runtime/cache paths (.codemender/, .exploit/, .cache/, ...) are ignored via
+    # .git/info/exclude (registered by cm_exec.sh); naming ignored directories as pathspec exclusions makes newer git
+    # abort, so only *.sarif is excluded explicitly.
+    git add -A -- . ':!*.sarif'
     if ! git diff --cached --quiet; then
-      git commit -m "security(cm): fix ${fid}"
+      # --no-verify: the loop runs its own build and security gates; user hooks must not block internal commits
+      git commit -q --no-verify -m "security(cm): fix ${fid}"
       echo "✅ Committed verified fix for ${fid}"
       echo "🔍 Reconciling AST line numbers via differential cm find before next finding..."
       if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
@@ -190,6 +220,6 @@ for fid in "${TARGET_FIDS[@]}"; do
     fi
   else
     echo "⚠️  cm fix failed for ${fid}; cleaning working tree and continuing..."
-    git checkout HEAD -- . && git clean -fd
+    drop_uncommitted_changes
   fi
 done
