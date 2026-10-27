@@ -1,6 +1,7 @@
 ---
 name: codemender-remediate
 description: Use this skill when remediating vulnerabilities, generating security patches, running outer-shell regression hard gates, or executing atomic multi-vulnerability fix loops with Google Cloud CodeMender (cm fix, cm vcs).
+compatibility: Requires bash, git, curl and unzip (installer only), the Google Cloud CodeMender CLI (cm) 0.16.0 or later, and Google Cloud Application Default Credentials for a project with CodeMender access. Works with Antigravity, Claude Code, and OpenAI Codex.
 ---
 
 # CodeMender Context-Aware Patch Remediation (`codemender-remediate`)

@@ -22,7 +22,7 @@ To conserve context tokens and prevent stateless subshell bugs, delegate to the 
 
 ## 2. Quick-Start Command Reference (Stateless Subshell Safe)
 
-Every `run_command` executes in an isolated subshell. Replace `<plugin-root>` with the absolute path of this plugin's install directory (the directory containing this file) and invoke `cm_exec.sh` or `cm_remediate_loop.sh`; each skill also bundles the same helpers under its own `scripts/` directory:
+Each shell tool call (`run_command` in Antigravity, `Bash` in Claude Code and Codex) runs in a fresh subshell. Replace `<plugin-root>` with the absolute path of this plugin's install directory (the directory containing this file) and invoke `cm_exec.sh` or `cm_remediate_loop.sh`; each skill also bundles the same helpers under its own `scripts/` directory:
 
 ```bash
 # 1. Safe Initialization (Never passes -y; skips if .codemender/config.yaml exists)

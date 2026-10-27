@@ -1,6 +1,7 @@
 ---
 name: codemender-audit
 description: Use this skill for defensive security review, static AST analysis, PR diff auditing, or verifying findings with Google Cloud CodeMender (cm find, cm report import, cm verify, cm report).
+compatibility: Requires bash, git, curl and unzip (installer only), the Google Cloud CodeMender CLI (cm) 0.16.0 or later, and Google Cloud Application Default Credentials for a project with CodeMender access. Works with Antigravity, Claude Code, and OpenAI Codex.
 ---
 
 # CodeMender Autonomous Security Audit & Verification (`codemender-audit`)
@@ -24,7 +25,7 @@ When the user asks to verify the environment, check plugin readiness, or inspect
 
 ### 0.2 Stateless Wrapper & Initialization (`cm_exec.sh`)
 
-Every `run_command` executes in an isolated subshell. To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PROJECT_ROOT` and `REAL_HOME` are always resolved in every subshell, **always invoke `cm` via [scripts/cm_exec.sh](scripts/cm_exec.sh)**:
+To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PROJECT_ROOT` and `REAL_HOME` are resolved in every fresh subshell, **always invoke `cm` via [scripts/cm_exec.sh](scripts/cm_exec.sh)**:
 
 ```bash
 # Safe initialization (automatically populates .git/info/exclude and skips if config.yaml exists)

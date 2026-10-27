@@ -31,6 +31,25 @@ if grep -rnE '\.gemini/config/plugins|\.claude/plugins|CM_PLUGIN_DIR|\.\./\.\./s
 fi
 echo "✅ Skills reference bundled scripts only (no install-specific paths)"
 
+# 1c. Agent Skills Frontmatter Conformance (https://agentskills.io/specification)
+python3 -c '
+import glob, os, re, sys
+for path in sorted(glob.glob("skills/*/SKILL.md")):
+    text = open(path).read()
+    m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        sys.exit(f"❌ {path}: missing YAML frontmatter")
+    fields = dict(line.split(": ", 1) for line in m.group(1).splitlines() if ": " in line)
+    name = fields.get("name", "")
+    if name != os.path.basename(os.path.dirname(path)) or not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name) or len(name) > 64:
+        sys.exit(f"❌ {path}: name must match its directory and use lowercase letters, digits, and hyphens")
+    if not 0 < len(fields.get("description", "")) <= 1024:
+        sys.exit(f"❌ {path}: description must be 1-1024 characters")
+    if len(fields.get("compatibility", "")) > 500:
+        sys.exit(f"❌ {path}: compatibility must be at most 500 characters")
+print("✅ Agent Skills frontmatter conformant (name, description, compatibility)")
+'
+
 # 2. PreToolUse Hook Verification (Normal PATH + Pure POSIX Fallback without python3/jq)
 python3 -c '
 import subprocess, json
