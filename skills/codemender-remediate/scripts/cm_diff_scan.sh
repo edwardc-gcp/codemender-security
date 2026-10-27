@@ -2,7 +2,7 @@
 # Scans local changes with CodeMender diff mode (`cm find --diff`): the Secure Inner Loop scanner and git hook entry point.
 #
 # Usage: cm_diff_scan.sh [--scope auto|working|staged|branch|last-commit] [--base REF] [--path PATH]
-#                        [--fail-on SEVERITIES] [--depth N] [--output FILE] [-c CONTEXT]
+#                        [--fail-on SEVERITIES] [--depth N] [--output FILE] [-c CONTEXT] [-- CM_FIND_FLAGS...]
 #
 # Scopes:
 #   working      uncommitted changes to tracked files (vs HEAD) plus untracked source files; `cm find --diff` ignores
@@ -12,6 +12,10 @@
 #   last-commit  the most recent commit (`--diff=HEAD~1`)
 #   auto         (default) working if there are unstaged or untracked source changes, else staged if something is
 #                staged, else branch if the branch is ahead of its upstream, else nothing to scan
+#
+# Flags after `--` go to `cm find` unchanged, for example --model gemini-4-argon, --diff-max-neighbors 20,
+# --diff-workers 8, --diff-job-timeout 20m, --fail-on-truncation, or --include-hidden. The script sets --diff, --staged,
+# --format, --output, --fail-on, and -y itself, and refuses sandbox flags (--unrestricted, --sandbox).
 #
 # Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
 #             CRITICAL,HIGH; an empty value only reports), 2 = tool or environment error.
@@ -29,8 +33,9 @@ FAIL_ON="CRITICAL,HIGH"
 DEPTH=""
 OUTPUT=""
 CONTEXT=""
+EXTRA_ARGS=()
 
-usage() { sed -n '2,19p' "$0" | sed -E 's/^# ?//'; }
+usage() { sed -n '2,22p' "$0" | sed -E 's/^# ?//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -42,7 +47,21 @@ while [ $# -gt 0 ]; do
     --output) OUTPUT="${2:-}"; shift 2 ;;
     -c|--context) CONTEXT="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
+    --) shift; EXTRA_ARGS=("$@"); break ;;
     *) echo "❌ Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+for arg in ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; do
+  case "${arg}" in
+    --diff|--diff=*|--staged|--quick|--deep|--format|--format=*|--output|--output=*|--fail-on|--fail-on=*|-y|--yes)
+      echo "❌ ${arg} is set by cm_diff_scan.sh; use its own options (--scope, --base, --fail-on, --output) instead." >&2
+      exit 2
+      ;;
+    --unrestricted|--sandbox|--sandbox=*)
+      echo "❌ ${arg} changes the CodeMender sandbox, so cm_diff_scan.sh refuses it. Only the user can approve that, for a cm_exec.sh find run." >&2
+      exit 2
+      ;;
   esac
 done
 
@@ -244,6 +263,7 @@ fi
 if [ -n "${CONTEXT}" ]; then
   CM_ARGS+=(-c "${CONTEXT}")
 fi
+CM_ARGS+=(${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
 
 rm -f "${REPORT}"
 bash "${CM_EXEC}" "${CM_ARGS[@]}"
