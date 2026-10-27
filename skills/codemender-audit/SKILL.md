@@ -30,6 +30,9 @@ To prevent `$HOME` pollution, preserve `.codemender/config.yaml`, and ensure `PR
 ```bash
 # Safe initialization (automatically populates .git/info/exclude and skips if config.yaml exists)
 bash "<skill-dir>/scripts/cm_exec.sh" init
+
+# Read-only check of the workspace, config parsing, build command, and VCS (runs even when config.yaml exists)
+bash "<skill-dir>/scripts/cm_exec.sh" init --verify
 ```
 
 * **Build & Sandbox Configuration**: Inspect `.codemender/config.yaml` (see [references/config_schema.md](references/config_schema.md)).
@@ -92,7 +95,36 @@ bash "<skill-dir>/scripts/cm_exec.sh" find ./src/auth/ --quick -y -c "Focus on a
 bash "<skill-dir>/scripts/cm_exec.sh" find . -y
 ```
 
-For CI/CD pull request gates, run `cm find . --diff=origin/main --fail-on=CRITICAL,HIGH --format sarif --output results.sarif` in the pipeline (see [references/cli_reference.md](references/cli_reference.md)).
+For CI/CD pull request gates, run `cm find . --diff=origin/main --fail-on=CRITICAL,HIGH --fail-on-truncation --format sarif --output results.sarif` in the pipeline (see [references/cli_reference.md](references/cli_reference.md)).
+
+### Flag Playbook
+Every `cm` flag, default, and environment variable is in [references/cli_reference.md](references/cli_reference.md). Add flags to `cm_exec.sh find ...` directly, or after `--` with `cm_diff_scan.sh` (for example `cm_diff_scan.sh --scope branch -- --diff-max-neighbors 20`):
+
+| Situation | Add |
+| :--- | :--- |
+| You know the threat model, trust boundaries, or focus area | `-c "<context>"` (scans, `verify`, and `fix`) |
+| Complex cross-file logic, or the default model's findings look shallow | `--model gemini-4-argon` (safety blocks retry on fallback models; `--no-model-fallback` forbids that) |
+| A widely used function or API contract changed | `cm_diff_scan.sh --depth 2`, or `-- --diff-max-neighbors 20` |
+| Large files time out, so the scan is INCOMPLETE | `-- --diff-job-timeout 20m` |
+| Many files changed | `-- --diff-workers 8` |
+| A CI gate must not pass with partial coverage | `--fail-on-truncation` |
+| Report without blocking | `--fail-on ""` |
+| Workflows or configs live in dot directories (`.github/`) | `--include-hidden`, plus their extensions in `scan.extensions.include` |
+| The analysis needs shell commands, for example for generated code | `--enable-bash` (sandboxed; more turns) |
+| A deep scan is too slow or costly | `--deep-workers 4`, `--deep-max-turns 3`, or a quick scan instead |
+| Machine-readable results | `--format json` or `--format sarif` with `--output <file>` |
+
+Through `cm_exec.sh`, which reads the repository's own state:
+
+| Need | Command |
+| :--- | :--- |
+| Preflight before long runs or in CI | `cm_exec.sh health --strict --json` |
+| An interrupted run (network drop, `Ctrl+C`) | `cm_exec.sh session list`, then `cm_exec.sh session resume <id> -y` (within 7 days) |
+| A run that must stop | `cm_exec.sh session cancel <id>` |
+| One finding, its patches, or its exploit artifacts | `cm_exec.sh report <id>`, `report --patches`, `report --artifacts` |
+| Filtered findings | `cm_exec.sh report --status OPEN --severity HIGH --sort time` (`--status` rejects `VERIFIED`: find those in `report -f json`) |
+| Token cost | `cm_exec.sh stats --since 24h`, `stats --session <id>`, `stats --json` |
+| Config sanity after an edit | `cm_config_check.sh` and `cm_exec.sh init --verify` |
 
 ### Workflow C: Ingesting External Scanner Reports (`cm report import`)
 To verify findings from CodeQL, Semgrep, Snyk, or custom auditors (see [references/finding_format.md](references/finding_format.md) for the 6-field Simple JSON schema):
@@ -133,6 +165,8 @@ bash "<skill-dir>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verific
 ```
 
 If `cm verify` appended `.exploit/` to `.gitignore`, revert that edit unless the user wants to keep it: `.git/info/exclude` already ignores `.exploit/`.
+
+Other verification options: `-c "<focus>"` steers the agent (for example toward one request path), `--model gemini-4-argon` helps with hard cases, and running `cm verify` again on a `DISMISSED` finding re-examines it. Read the verdict in `.exploit/info.yaml` and the reasoning in `.exploit/REPORT.md` (see [references/finding_format.md](references/finding_format.md)).
 
 ### 2. Strict Sandbox Policy & Triage Integrity
 * **NEVER use `--unrestricted` by default**: `--unrestricted` disables **both** the filesystem sandbox (`exebox`) AND the command policy denylist (`full system access`). Running `cm verify --unrestricted` on untrusted repositories exposes the host to Prompt Injection $\rightarrow$ RCE. Require **explicit per-invocation human approval**.

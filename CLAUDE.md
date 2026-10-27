@@ -33,7 +33,13 @@ bash "<plugin-root>/scripts/cm_exec.sh" report -f sarif > codemender-results.sar
 
 # 7. Optional git hook, only when the user asks and confirms (scans staged changes on every commit)
 bash "<plugin-root>/scripts/cm_git_hook.sh" install
+
+# 8. Check .codemender/config.yaml after editing it (cm doesn't warn about unknown or misspelled keys)
+bash "<plugin-root>/scripts/cm_config_check.sh"
+bash "<plugin-root>/scripts/cm_exec.sh" init --verify
 ```
+
+`cm_diff_scan.sh` and `cm_remediate_loop.sh` pass extra flags after `--` to `cm find` and `cm fix` (for example `-- --model gemini-4-argon`). Every flag, environment variable, and config key is in [references/cli_reference.md](references/cli_reference.md) and [references/config_schema.md](references/config_schema.md).
 
 ---
 

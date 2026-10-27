@@ -64,6 +64,24 @@ bash "<skill-dir>/scripts/cm_remediate_loop.sh" --all-open \
   -c "Apply idiomatic security patch preserving public function signatures and HTTP status codes"
 ```
 
+### Tuning `cm fix` (flags after `--`)
+The loop passes everything after `--` to every `cm fix` call (all flags: [references/cli_reference.md](references/cli_reference.md)):
+
+| Situation | Add |
+| :--- | :--- |
+| Constraints the patch must respect | `-c "<guidance>"` (a loop option, before `--`) |
+| A complex patch, or fixes that keep failing validation | `-- --model gemini-4-argon` |
+| Retry without the cached patch from an earlier attempt | `-- --no-cache` |
+| Cap the run | `--max-fixes 3` (a loop option) |
+| Gate each fix on a stricter or looser severity | `--fail-on CRITICAL,HIGH,MEDIUM` (a loop option) |
+
+```bash
+bash "<skill-dir>/scripts/cm_remediate_loop.sh" --strict \
+  -c "Use the parameterized query helper in app/db.py" -- --model gemini-4-argon --no-cache
+```
+
+To review the patches CodeMender generated, run `bash "<skill-dir>/scripts/cm_exec.sh" report --patches` (`cm fix --export` isn't implemented in cm 0.16.0). Before a run, check `build.command` with `bash "<skill-dir>/scripts/cm_config_check.sh"`: `cm fix` runs it inside the sandbox from the finding's directory, the host `/tmp` is blocked there, and the network is closed unless `sandbox.network.profile: permissive-open`.
+
 ---
 
 ## Phase 2: Post-Fix Re-Verification & Rollback (`cm vcs`)
