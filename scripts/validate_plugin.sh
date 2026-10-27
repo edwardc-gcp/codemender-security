@@ -89,6 +89,13 @@ cases = [
     ("bash scripts/cm_exec.sh build --force", "allow"),
     ("cm version", "allow"),
     ("cm report -f json", "allow"),
+    ("git commit -m \"feat(scan): pass extra cm find flags\"", "allow"),
+    ("git commit -m \"docs: never run cm init -y\"", "allow"),
+    ("/usr/local/bin/cm find . -y", "deny"),
+    ("cd app && cm fix 1 -y", "deny"),
+    ("(cd app; cm init)", "deny"),
+    ("bash scripts/cm_diff_scan.sh -- --unrestricted", "force_ask"),
+    ("sudo cm update", "force_ask"),
 ]
 count = 0
 for minimal in (False, True):
@@ -129,7 +136,8 @@ for minimal in (False, True):
         assert run(build("cm find . -y"), minimal) == "deny"
         assert run(build("bash /opt/p/skills/codemender-audit/scripts/cm_exec.sh find . --diff -y"), minimal) == "allow"
         assert run(build("ls -la"), minimal) == "allow"
-        count += 7
+        assert run(build("git commit -m \"feat: pass extra cm find flags\""), minimal) == "allow"
+        count += 8
     assert run(claude("cm update"), minimal, {"PLUGIN_ROOT": "/opt/p"}) == "deny"
     count += 1
 print(f"✅ Claude Code / Codex hook contract tests passed ({count}/{count} assertions)")
