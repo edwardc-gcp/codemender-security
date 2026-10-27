@@ -33,7 +33,7 @@ bash "<skill-dir>/scripts/cm_exec.sh" init
 ```
 
 * **Build & Sandbox Configuration**: Inspect `.codemender/config.yaml` (see [references/config_schema.md](references/config_schema.md)).
-  * Dynamically verify `command -v pytest` / `node` / `python3` before setting `build.command`.
+  * Dynamically verify `command -v pytest` / `node` / `python3` before setting `build.command`, and anchor it to the repository root (`cd "$(git rev-parse --show-toplevel)" && ...`): `cm fix` runs it from the finding's directory.
   * If `exebox` (`sandbox-exec`) blocks local network sockets during builds, set `sandbox.network.profile: "permissive-open"`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`), set `build.command: "true"` for scanning and enforce outer-shell verification during remediation.
 
 ---
@@ -90,8 +90,8 @@ bash "<skill-dir>/scripts/cm_exec.sh" report import -f findings.sarif
 
 ### Workflow D: Surgical Config Tuning (`.codemender/config.yaml`)
 Never leave `.codemender/config.yaml` at generic defaults when scanning specialized repositories (see [references/config_schema.md](references/config_schema.md)):
-1. **Scan Latency >60s**: Add `coverage`, `migrations`, `docs`, `*.min.js` to `scan.exclude_dirs` (`node_modules`, `vendor`, `dist`, `bin`, `target`, `obj`, `build`, `.gradle` are excluded by default in `v0.15.0+`).
-2. **Non-Standard Extensions**: Add `.vue`, `.svelte`, `.swift` to `scan.extensions.include` (add `.yaml`, `.yml`, `.sh` only when explicitly auditing deployment manifests; `.tf` and `.hcl` are included by default in `v0.15.0+`; never globally add `.json`).
+1. **Scan Latency >60s**: Add `coverage`, `migrations`, `docs` to `scan.exclude_dirs` (`v0.16.0` excludes `node_modules`, `vendor`, `dist`, `.gradle`, and only the root-level `/target`, `/obj`, `/build` by default; nested build output and `bin/` are scanned).
+2. **Non-Standard Extensions**: Add `.vue`, `.svelte`, `.swift` to `scan.extensions.include` (add `.yaml`, `.yml`, `.sh` only when explicitly auditing deployment manifests; `.tf`, `.hcl`, and C++ headers such as `.hh` and `.hxx` are included by default in `v0.16.0`; never globally add `.json`).
 3. **Polyglot / Monorepo**: Populate `project_paths` with active microservice roots (e.g., `["./services/auth", "./services/billing"]`).
 4. **Compiler Search Loop (>60s inside `exebox`)**: When `cm` wastes turns searching for compilers inside `exebox`, set `build.command: "true"` for scanning and rely on outer-shell verification.
 
@@ -126,9 +126,10 @@ If `cm verify` appended `.exploit/` to `.gitignore`, revert that edit unless the
 
 ```bash
 # 1. Export SARIF v2.1.0 (standardized rule descriptors & repo-relative paths) for GitHub Code Scanning / Google Cloud SCC
+#    (reads the local state database; for the current state of a change, use the diff scan's --format sarif --output instead)
 bash "<skill-dir>/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
 
-# 2. Query actionable findings (OPEN / REOPENED) via JSON or interactive Table
+# 2. Query actionable findings (OPEN / VERIFIED / REOPENED) via JSON or interactive Table
 bash "<skill-dir>/scripts/cm_exec.sh" report -f json
 bash "<skill-dir>/scripts/cm_exec.sh" report -f table
 
