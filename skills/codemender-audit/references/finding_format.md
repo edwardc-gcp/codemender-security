@@ -57,7 +57,7 @@ Before reporting a vulnerability to the user:
 ]
 ```
 
-* **`status` values**: `"OPEN"`, `"VERIFIED"`, `"FIXED"`, `"DISMISSED"`, `"REOPENED"`.
+* **`status` values**: `"OPEN"`, `"VERIFIED"`, `"FIXED"`, `"DISMISSED"`, `"REOPENED"`. The `cm report --status` filter accepts only `OPEN`, `FIXED`, `DISMISSED`, and `REOPENED`, so select `VERIFIED` findings from this JSON.
 * **`file_path`**: Absolute path. Convert it to a repository-relative path before showing it or comparing it with `git diff` output.
 * **`finding_id`** and **`fingerprint`**: Stable identifiers. In cm 0.16.0 tests, a re-scan that reported the same issue at the same location kept both values even when the title was reworded. `finding_id` (or an unambiguous prefix) is the argument for `cm verify` and `cm fix`.
 * **`vuln_id`** / **`vuln_type`**: The CWE identifier (e.g., `"CWE-89"`); older releases put the full CWE name in `vuln_type`.
