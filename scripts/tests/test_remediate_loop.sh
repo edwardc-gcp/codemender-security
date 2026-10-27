@@ -26,7 +26,8 @@ new_repo() {
   git config user.email "tester@example.com"
   git config user.name "tester"
   echo "base" > README.md
-  git add README.md
+  printf '*.tmp\n' > .gitignore
+  git add README.md .gitignore
   git commit -qm "base"
   BASE_SHA="$(git rev-parse HEAD)"
   echo "user edit" >> README.md
@@ -87,4 +88,13 @@ STUB_FIX_MODE=patch run_loop
 [ "$(git rev-parse HEAD~1)" = "${FEATURE_SHA}" ] || fail "clean: expected exactly one fix commit"
 ! git log --format=%s | grep -q "wip(cm)" || fail "clean: no checkpoint expected"
 
-echo "✅ cm_remediate_loop.sh checkpoint tests passed (5 scenarios with stub cm)"
+# 6. Fix commits contain the patch and new source files only, never CodeMender's ignore edits or stray output.
+new_repo artifacts
+STUB_FIX_MODE=patch-with-artifacts run_loop --keep-commits
+COMMITTED="$(git show --name-only --format= HEAD | sort | tr '\n' ' ')"
+[ "${COMMITTED}" = "app.py sanitize.py " ] || fail "artifacts: fix commit should contain only app.py and sanitize.py, got: ${COMMITTED}"
+! grep -q '\.exploit' .gitignore || fail "artifacts: .exploit/ edit of .gitignore should have been dropped"
+[ ! -e lib/.gitignore ] || fail "artifacts: generated lib/.gitignore should have been removed"
+[ ! -e fix.log ] || fail "artifacts: stray fix.log should not survive"
+
+echo "✅ cm_remediate_loop.sh checkpoint and staging tests passed (6 scenarios with stub cm)"

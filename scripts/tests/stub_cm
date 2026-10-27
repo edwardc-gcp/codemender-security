@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
-#   STUB_FIX_MODE=patch|reset-then-patch|fail   behavior of `cm fix` (default: patch)
+#   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail   behavior of `cm fix` (default: patch)
 #   STUB_LOG=<file>                              append every invocation's arguments to this file
 if [ -n "${STUB_LOG:-}" ]; then
   printf '%s\n' "$*" >> "${STUB_LOG}"
@@ -19,6 +19,15 @@ case "${1:-}" in
         # What Phase 0 observed in cm 0.16.0: `cm fix` resets its workspace before patching.
         git checkout -q HEAD -- . && git clean -fdq
         sed -i.bak 's/UNSAFE/SAFE/' app.py && rm -f app.py.bak
+        ;;
+      patch-with-artifacts)
+        # Side effects seen in Phase 0: ignore-file edits, a generated .gitignore, a new helper, and stray output.
+        sed -i.bak 's/UNSAFE/SAFE/' app.py && rm -f app.py.bak
+        printf '.exploit/\n' >> .gitignore
+        mkdir -p lib
+        printf '\n# CodeMender enforced ignores\nnode_modules\n.exploit/\n' > lib/.gitignore
+        echo 'def clean(value): return value' > sanitize.py
+        echo 'build output' > fix.log
         ;;
       fail)
         echo "# half-applied patch" >> app.py

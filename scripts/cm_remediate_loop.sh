@@ -98,6 +98,45 @@ drop_uncommitted_changes() {
   git clean -fdq "${CLEAN_EXCLUDES[@]}" 2>/dev/null || true
 }
 
+# Stage a fix the way the official CodeMender autofix job does: changes to files already in the repository, plus new
+# source files the fix adds (for example a sanitizer helper). Other new files (test output, logs) stay out of the commit.
+# CodeMender's own ignore-file edits are dropped as well: cm verify appends ".exploit/" to .gitignore and cm fix can create
+# a "# CodeMender enforced ignores" .gitignore in its workspace, while .git/info/exclude already covers those paths.
+stage_fix_changes() {
+  local path line changes only_exploit
+  while IFS= read -r path; do
+    [ -n "${path}" ] || continue
+    changes="$(git diff -U0 -- "${path}" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' || true)"
+    only_exploit=true
+    while IFS= read -r line; do
+      case "${line}" in
+        "+.exploit"|"+.exploit/"|"+") ;;
+        *) only_exploit=false ;;
+      esac
+    done <<< "${changes}"
+    if [ -n "${changes}" ] && [ "${only_exploit}" = true ]; then
+      git checkout -q -- "${path}"
+    fi
+  done < <(git diff --name-only -- '.gitignore' '*/.gitignore')
+  while IFS= read -r -d '' path; do
+    if grep -q '^# CodeMender enforced ignores' "${path}"; then
+      rm -f -- "${path}"
+    fi
+  done < <(git ls-files --others --exclude-standard -z -- '.gitignore' '*/.gitignore')
+
+  git add -u -- . ':!*.sarif'
+  while IFS= read -r -d '' path; do
+    case "${path}" in
+      *.py|*.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.go|*.java|*.kt|*.kts|*.rb|*.php|*.rs|*.c|*.cc|*.cpp|*.cxx|*.h|*.hh|*.hpp|*.hxx|*.cs|*.sol|*.tf|*.hcl)
+        git add -- "${path}"
+        ;;
+      *)
+        echo "ℹ️  Leaving new non-source file out of the fix commit: ${path}"
+        ;;
+    esac
+  done < <(git ls-files --others --exclude-standard -z -- . ':!*.sarif')
+}
+
 CHECKPOINT_BASE=""
 finish() {
   local rc=$?
@@ -201,10 +240,8 @@ for fid in "${TARGET_FIDS[@]}"; do
       drop_uncommitted_changes
       continue
     fi
-    # Stage code & newly created helper files. Runtime/cache paths (.codemender/, .exploit/, .cache/, ...) are ignored via
-    # .git/info/exclude (registered by cm_exec.sh); naming ignored directories as pathspec exclusions makes newer git
-    # abort, so only *.sarif is excluded explicitly.
-    git add -A -- . ':!*.sarif'
+    # Runtime/cache paths (.codemender/, .exploit/, .cache/, ...) stay out via .git/info/exclude (registered by cm_exec.sh).
+    stage_fix_changes
     if ! git diff --cached --quiet; then
       # --no-verify: the loop runs its own build and security gates; user hooks must not block internal commits
       git commit -q --no-verify -m "security(cm): fix ${fid}"
