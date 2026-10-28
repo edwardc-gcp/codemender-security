@@ -93,8 +93,62 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "${PROJECT_ROOT}"
 
 # 1. Strategy Pipeline for polyglot outer build hard gate detection
+# build.command from .codemender/config.yaml, unquoted the way YAML does it (escapes in double quotes, '' in single
+# quotes), so a command such as "cd \"$(git rev-parse --show-toplevel)\" && npm run build" runs as written.
+config_build_command() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - .codemender/config.yaml <<'PY'
+import json, re, sys
+
+def scalar(v):
+    v = v.strip()
+    if v.startswith('"'):
+        i = 1
+        while i < len(v) and v[i] != '"':
+            i += 2 if v[i] == "\\" else 1
+        body = v[:i + 1]
+        try:
+            return json.loads(body)
+        except ValueError:
+            return body[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    if v.startswith("'"):
+        i = 1
+        while i < len(v):
+            if v[i] == "'":
+                if v[i + 1:i + 2] == "'":
+                    i += 2
+                    continue
+                break
+            i += 1
+        return v[1:i].replace("''", "'")
+    return re.split(r"\s+#", v, maxsplit=1)[0].strip()
+
+in_build = False
+for line in open(sys.argv[1], encoding="utf-8"):
+    if not line.strip() or line.lstrip().startswith("#"):
+        continue
+    if not line[0].isspace():
+        in_build = re.match(r"build:\s*(#.*)?$", line.rstrip()) is not None
+    elif in_build:
+        m = re.match(r"\s+command:(.*)$", line.rstrip("\n"))
+        if m:
+            print(scalar(m.group(1)))
+            break
+PY
+  else
+    sed -n 's/^[[:space:]]*command:[[:space:]]*["'"'"']\(.*\)["'"'"'][[:space:]]*$/\1/p' .codemender/config.yaml | head -n 1 | sed 's/\\"/"/g'
+  fi
+}
+
+# A no-op build command ("true" or ":") falls through to the probes below, so the outer gate still checks something.
 probe_config_file() {
-  [ -f ".codemender/config.yaml" ] && sed -n 's/^[[:space:]]*command:[[:space:]]*["'"'"']\(.*\)["'"'"'][[:space:]]*$/\1/p' .codemender/config.yaml | head -n 1
+  [ -f ".codemender/config.yaml" ] || return 1
+  local cmd
+  cmd="$(config_build_command 2>/dev/null || true)"
+  case "${cmd}" in
+    "" | true | :) return 1 ;;
+  esac
+  printf '%s\n' "${cmd}"
 }
 
 probe_node() {

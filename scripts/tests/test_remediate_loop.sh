@@ -136,4 +136,23 @@ grep -q '^fix f-001 .* -y --model gemini-4-argon --no-cache' "${STUB_LOG}" || fa
 assert_user_work_restored "passthrough"
 if bash "${LOOP}" -b true f-001 -- --export s-1 > /dev/null 2>&1; then fail "passthrough: --export should be refused"; fi
 
-echo "✅ cm_remediate_loop.sh tests passed (10 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags)"
+# 11. Without -b, the outer gate runs build.command from config.yaml as YAML reads it (escaped double quotes or single
+#     quotes), and a no-op "true" falls through to probing the project instead of disabling the gate.
+gate_case() {
+  new_repo "gate_$1"
+  printf 'build:\n  command: %s\n' "$2" > .codemender/config.yaml
+  if ! STUB_FIX_MODE=patch bash "${LOOP}" f-001 > "${WORK}/loop.log" 2>&1; then
+    cat "${WORK}/loop.log" >&2
+    fail "gate $1: loop exited non-zero"
+  fi
+}
+gate_case double '"cd \"$(git rev-parse --show-toplevel)\" && touch outer-gate.tmp"'
+[ -e outer-gate.tmp ] || fail "gate double: the escaped build.command did not run: $(grep 'hard gate' "${WORK}/loop.log")"
+grep -q 'query = "SAFE"' app.py || fail "gate double: the fix should pass the outer gate"
+gate_case single "'cd \"\$(git rev-parse --show-toplevel)\" && touch outer-gate.tmp'"
+[ -e outer-gate.tmp ] || fail "gate single: the single-quoted build.command did not run: $(grep 'hard gate' "${WORK}/loop.log")"
+gate_case noop '"true"'
+grep -q 'hard gate: ' "${WORK}/loop.log" || fail "gate noop: the outer gate did not run"
+! grep -q 'hard gate: true$' "${WORK}/loop.log" || fail "gate noop: a no-op build.command must not disable the outer gate"
+
+echo "✅ cm_remediate_loop.sh tests passed (11 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config)"
