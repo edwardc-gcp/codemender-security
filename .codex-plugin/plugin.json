@@ -1,6 +1,6 @@
 {
   "name": "codemender-security",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Autonomous security auditing, PoC verification, and context-aware patch remediation using Google Cloud CodeMender (cm).",
   "author": {
     "name": "Edward Chuang",

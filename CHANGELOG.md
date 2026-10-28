@@ -2,6 +2,11 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.4.2] - 2026-10-28
+
+- `cm_remediate_loop.sh` reads `build.command` the way YAML does. A double-quoted command with escaped quotes, such as `"cd \"$(git rev-parse --show-toplevel)\" && npm run build"`, no longer fails the outer build gate and reverts every fix. A no-op `build.command` (`"true"`) now makes the gate probe the project instead of turning it off.
+- The audit skill no longer asks for another staged scan before a commit when the same staged changes already passed one.
+
 ## [1.4.1] - 2026-10-27
 
 - `cm_exec.sh` no longer exports a location variable that the public CodeMender docs don't mention; `cm` uses the global location by default.
