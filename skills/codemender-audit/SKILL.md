@@ -82,7 +82,7 @@ bash "<skill-dir>/scripts/cm_git_hook.sh" install --pre-push   # pre-push: scans
 bash "<skill-dir>/scripts/cm_git_hook.sh" status
 bash "<skill-dir>/scripts/cm_git_hook.sh" uninstall
 ```
-* With the pre-commit hook installed, run `cm_diff_scan.sh --scope staged` before `git commit`: the hook reuses that result for the same staged content instead of scanning again, so the commit doesn't outlast your shell tool's timeout.
+* With the pre-commit hook installed, run `cm_diff_scan.sh --scope staged` before `git commit`, unless those exact staged changes already passed a staged scan: the hook reuses that result for the same staged content instead of scanning again, so the commit doesn't outlast your shell tool's timeout.
 * A blocked commit stays blocked for the same content. Fix the findings; never bypass the hook with `--no-verify` or `CM_SKIP_HOOK=1` unless the user tells you to.
 * The hook never overwrites an existing hook, and with `core.hooksPath` set (for example husky) it prints the line to add to the hook manager instead.
 
