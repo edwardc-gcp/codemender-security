@@ -167,4 +167,12 @@ new_repo noreset_016
 STUB_FIX_MODE=patch run_loop f-001
 ! grep -q -- '--no-reset' "${STUB_LOG}" || fail "no-reset: cm 0.16.0 must not get --no-reset"
 
-echo "✅ cm_remediate_loop.sh tests passed (12 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config, --no-reset)"
+# 13. Untracked *.sarif reports stay out of the checkpoint, and the loop's cleanup doesn't delete them either.
+new_repo sarif
+echo '{"runs": []}' > results.sarif
+STUB_CM_VERSION=0.17.0 STUB_FIX_MODE=fail run_loop f-001
+assert_user_work_restored "sarif"
+[ -f results.sarif ] || fail "sarif: the untracked results.sarif report was deleted"
+git status --porcelain | grep -q '^?? results.sarif$' || fail "sarif: results.sarif should stay untracked"
+
+echo "✅ cm_remediate_loop.sh tests passed (13 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config, --no-reset, *.sarif)"

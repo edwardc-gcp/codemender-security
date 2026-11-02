@@ -194,11 +194,12 @@ detect_outer_build_cmd() {
 OUTER_BUILD_CMD="${OUTER_BUILD_CMD:-$(detect_outer_build_cmd)}"
 
 # 2. Checkpoint commit for uncommitted work
-# `cm fix` resets its workspace with `git checkout HEAD -- . && git clean -fd` (observed in cm 0.16.0, where only the
-# sandbox kept it from succeeding), and stashing would hide the very code that needs fixing. Committing the work first
-# keeps it visible to `cm fix` and makes every reset harmless. At exit the loop resets back to the original base, so the
-# user's changes come back uncommitted (now including the applied fixes) unless --keep-commits is given.
-CLEAN_EXCLUDES=(-e .codemender -e .cm_project -e .exploit -e .cache -e .npm -e .cargo -e .local -e .config)
+# Without --no-reset (cm 0.16.0), `cm fix` resets its workspace with `git checkout HEAD -- . && git clean -fd` (observed
+# in cm 0.16.0, where only the sandbox kept it from succeeding), and stashing would hide the very code that needs fixing.
+# Committing the work first keeps it visible to `cm fix` and makes every reset harmless. At exit the loop resets back to
+# the original base, so the user's changes come back uncommitted (now including the applied fixes) unless --keep-commits
+# is given. *.sarif reports stay out of the checkpoint, so the cleanup below leaves untracked ones alone too.
+CLEAN_EXCLUDES=(-e .codemender -e .cm_project -e .exploit -e .cache -e .npm -e .cargo -e .local -e .config -e '*.sarif')
 drop_uncommitted_changes() {
   git checkout -q HEAD -- . 2>/dev/null || true
   git clean -fdq "${CLEAN_EXCLUDES[@]}" 2>/dev/null || true
