@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Checks .codemender/config.yaml against the documented keys, and for invalid or risky values.
 #
-# cm 0.16.0 doesn't warn about unknown or misspelled keys (`cm init --verify` still reports "Config loaded successfully"),
-# and the web docs use a few names that differ from the `cm init` template. Run this script after editing the config,
-# together with `cm_exec.sh init --verify` (which catches YAML syntax errors and an invalid team_id). The schema comes
-# only from the `cm init` 0.16.0 template, the public CodeMender docs, and the release notes.
+# cm (0.16.0 and 0.17.0) doesn't warn about unknown or misspelled keys (`cm init --verify` still reports "Config loaded
+# successfully"), and older docs used a few names that differ from the `cm init` template. Run this script after editing
+# the config, together with `cm_exec.sh init --verify` (which catches YAML syntax errors and an invalid team_id). The
+# schema comes only from the `cm init` 0.17.0 template, the public CodeMender docs, and the release notes.
 #
 # Usage: cm_config_check.sh [CONFIG_PATH]   (default: <repository root>/.codemender/config.yaml)
 # Exit codes: 0 = no problems (warnings and notes may be printed), 1 = problems found, 2 = file missing or unreadable.
@@ -31,14 +31,14 @@ import difflib, re, sys
 
 path = sys.argv[1]
 
-# Documented keys: the `cm init` 0.16.0 template, the public config docs, and the release notes (scan.include_hidden).
+# Documented keys: the `cm init` 0.17.0 template, the public config docs, and the release notes (scan.include_hidden).
 KNOWN = {
     "server": "any",  # template: `server: {}`; its comment says the built-in endpoint can be overridden here
     "team_id": "str",
     "scan": "map", "scan.extensions": "map", "scan.extensions.include": "list", "scan.extensions.exclude": "list",
     "scan.exclude_dirs": "list", "scan.include_hidden": "bool", "scan.max_file_size_kb": "int", "scan.incremental": "bool",
     "project_paths": "list",
-    "output": "map", "output.format": "str",
+    "output": "map", "output.format": "str", "output.plain": "bool",
     "tools": "map", "tools.confirm_commands": "bool", "tools.confirm_writes": "bool",
     "tools.cleanup_candidate_branches": "bool",
     "vcs": "map", "vcs.type": "str", "vcs.commands": "map", "vcs.commands.reset": "str", "vcs.commands.diff": "str",
@@ -48,9 +48,9 @@ KNOWN = {
     "sandbox.network": "map", "sandbox.network.profile": "str",
     "security": "map", "security.protected_files": "list",
     "model": "str",  # listed in the public config docs
-    "execution": "any",  # named in the public sandbox docs, without documented keys
+    "execution": "map", "execution.interactive_mode": "bool",
 }
-# Names the web docs use instead of the `cm init` template's keys.
+# Names that older CodeMender docs used instead of the `cm init` template's keys.
 DOC_NAMES = {
     "human_confirmation": "tools.confirm_commands and tools.confirm_writes",
     "require_confirmation": "tools.confirm_commands and tools.confirm_writes",
@@ -177,7 +177,7 @@ for key in sorted(values, key=lambda k: lines_of[k]):
         continue
     leaf = key.split(".")[-1]
     if key in DOC_NAMES:
-        warnings.append((where, f"the web docs mention this name, but the cm init template uses {DOC_NAMES[key]}; prefer those"))
+        warnings.append((where, f"older CodeMender docs used this name; the current docs and the cm init template use {DOC_NAMES[key]}; prefer those"))
         continue
     homes = [k for k in LEAVES.get(leaf, []) if k != key]
     if len(homes) == 1 and "." in homes[0]:
@@ -190,8 +190,6 @@ for key in sorted(values, key=lambda k: lines_of[k]):
 if "model" in values:
     notes.append((f"model (line {lines_of['model']})", "documented in the config docs; the plugin still passes --model on the "
                   "command line, which cm find, cm verify, and cm fix document"))
-if "execution" in values:
-    notes.append((f"execution (line {lines_of['execution']})", "the docs name this block but don't document its keys"))
 
 BOOL = {"true", "false", "yes", "no", "on", "off"}
 
@@ -246,6 +244,9 @@ if (val("sandbox.enabled") or "").lower() in ("false", "no", "off"):
 for key in ("tools.confirm_commands", "tools.confirm_writes"):
     if (val(key) or "").lower() in ("false", "no", "off"):
         notes.append((key, "confirmations are off for every run; the plugin prefers keeping them on and passing -y per command"))
+if (val("execution.interactive_mode") or "").lower() in ("false", "no", "off"):
+    notes.append(("execution.interactive_mode", "turns off both command and file-write prompts for every run; the plugin "
+                  "prefers keeping them on and passing -y per command"))
 
 build = val("build.command")
 if build is not None:

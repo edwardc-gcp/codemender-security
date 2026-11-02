@@ -19,7 +19,7 @@ check() {
 }
 expect_out() { printf '%s\n' "${OUT}" | grep -qF -- "$1" || fail "$2: expected '$1' in: ${OUT}"; }
 
-# 1. The cm 0.16.0 `cm init` template (with a root-anchored build command) has no problems.
+# 1. The cm 0.17.0 `cm init` template (with a root-anchored build command) has no problems.
 check <<'EOF'
 server: {}
 # team_id: "acme-security"
@@ -33,6 +33,7 @@ scan:
   incremental: true
 output:
   format: table   # "table", "json", "sarif"
+  # plain: false  # Disable emojis, Unicode glyphs, and terminal colors (or set CM_PLAIN=true)
 tools:
   confirm_commands: true
   confirm_writes: true
@@ -70,7 +71,7 @@ confirm_writes: false
 EOF
 [ "${RC}" -eq 1 ] || fail "typos: expected exit 1, got ${RC}"
 expect_out "model (line 1): documented in the config docs; the plugin still passes --model" "typos"
-expect_out "human_confirmation (line 2): the web docs mention this name, but the cm init template uses tools.confirm_commands" "typos"
+expect_out "human_confirmation (line 2): older CodeMender docs used this name; the current docs and the cm init template use tools.confirm_commands" "typos"
 expect_out "team_id (line 3)" "typos"
 expect_out "scan.exclude_dir (line 5): not a documented key, and cm doesn't warn about unknown or misspelled keys; did you mean scan.exclude_dirs?" "typos"
 expect_out "entries should start with a dot: py" "typos"
@@ -98,7 +99,7 @@ expect_out "permissive-open gives sandboxed tools full outbound network access" 
 expect_out "build.command: cm fix runs it from the finding's directory" "inline"
 expect_out "tools.confirm_writes: confirmations are off" "inline"
 
-# 4. A custom VCS needs its commands; a block the docs name without documenting its keys gets a note.
+# 4. A custom VCS needs its commands; execution documents only interactive_mode, so other keys there are undocumented.
 check <<'EOF'
 execution:
   anything: true
@@ -109,7 +110,7 @@ vcs:
 EOF
 [ "${RC}" -eq 1 ] || fail "custom vcs: expected exit 1, got ${RC}"
 expect_out "a custom VCS needs these commands: diff, status, stage" "custom vcs"
-expect_out "execution (line 1): the docs name this block but don't document its keys" "custom vcs"
+expect_out "execution.anything (line 2): not a documented key" "custom vcs"
 
 # 5. A missing file is an error.
 set +e
@@ -118,4 +119,15 @@ RC=$?
 set -e
 [ "${RC}" -eq 2 ] || fail "missing: expected exit 2, got ${RC}"
 
-echo "✅ cm_config_check.sh tests passed (5 scenarios: template, undocumented keys, inline maps, custom VCS, missing file)"
+# 6. cm 0.17.0 keys: output.plain is documented, and turning off interactive mode gets a note.
+check <<'EOF'
+output:
+  plain: true
+execution:
+  interactive_mode: false
+EOF
+[ "${RC}" -eq 0 ] || fail "0.17 keys: expected exit 0, got ${RC}: ${OUT}"
+expect_out "execution.interactive_mode: turns off both command and file-write prompts" "0.17 keys"
+! printf '%s\n' "${OUT}" | grep -q "output.plain" || fail "0.17 keys: output.plain should be accepted silently: ${OUT}"
+
+echo "✅ cm_config_check.sh tests passed (6 scenarios: template, undocumented keys, inline maps, custom VCS, missing file, 0.17 keys)"
