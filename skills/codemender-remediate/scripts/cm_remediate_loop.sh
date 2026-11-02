@@ -13,6 +13,7 @@
 #   --strict        revert a fix commit when the re-scan still reports the target or finds new findings
 #   --keep-commits  keep the checkpoint and fix commits instead of restoring uncommitted changes
 #   -- FLAGS        pass the rest to every `cm fix` call, for example --model gemini-4-argon or --no-cache
+#   With cm 0.17.0 or later, every `cm fix` call also gets --no-reset, so it never resets the workspace.
 
 set -euo pipefail
 
@@ -65,7 +66,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,15p' "$0" | sed -E 's/^# ?//'
+      sed -n '2,16p' "$0" | sed -E 's/^# ?//'
       exit 0
       ;;
     --)
@@ -267,7 +268,20 @@ if ! git rev-parse --verify -q HEAD >/dev/null; then
 fi
 
 # Let the wrapper register CodeMender's runtime paths in .git/info/exclude before anything is staged.
-"${CM_EXEC}" --version >/dev/null 2>&1 || true
+CM_VERSION="$("${CM_EXEC}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+
+# version_ge A B: true when version A (MAJOR.MINOR.PATCH) is at least B.
+version_ge() {
+  [ -n "$1" ] || return 1
+  [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$2" ]
+}
+
+# cm 0.17.0+ can fix without resetting its workspace (`cm fix --no-reset`). The checkpoint commit below already makes
+# that reset harmless; skipping it also spares untracked files the checkpoint leaves out, such as *.sarif reports.
+NO_RESET_ARGS=()
+if version_ge "${CM_VERSION}" 0.17.0; then
+  NO_RESET_ARGS=(--no-reset)
+fi
 
 DIRTY_FILES="$(git status --porcelain 2>/dev/null | grep -vE '^.. (\.codemender/|\.cm_project$|\.exploit/|\.cache/|\.npm/|\.cargo/|\.local/|\.config/|.*\.sarif$)' || true)"
 if [ -n "${DIRTY_FILES}" ]; then
@@ -386,7 +400,7 @@ PY
 remediate_one() {
   local fid="$1"
   echo "🛠️  Remediating finding: ${fid}"
-  if ! "${CM_EXEC}" fix "${fid}" -c "${GUIDANCE}" --bypass-warning -y ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; then
+  if ! "${CM_EXEC}" fix "${fid}" -c "${GUIDANCE}" --bypass-warning -y ${NO_RESET_ARGS[@]+"${NO_RESET_ARGS[@]}"} ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; then
     echo "⚠️  cm fix failed for ${fid}; dropping any partial patch."
     drop_uncommitted_changes
     return 1

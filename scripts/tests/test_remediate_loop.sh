@@ -155,4 +155,16 @@ gate_case noop '"true"'
 grep -q 'hard gate: ' "${WORK}/loop.log" || fail "gate noop: the outer gate did not run"
 ! grep -q 'hard gate: true$' "${WORK}/loop.log" || fail "gate noop: a no-op build.command must not disable the outer gate"
 
-echo "✅ cm_remediate_loop.sh tests passed (11 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config)"
+# 12. cm 0.17.0+ gets --no-reset on every cm fix call (so it never resets the workspace); cm 0.16.0 doesn't (unknown flag).
+new_repo noreset
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.17.0 STUB_FIX_MODE=reset-then-patch run_loop f-001 -- --no-cache
+grep -q '^fix f-001 .* -y --no-reset --no-cache' "${STUB_LOG}" || fail "no-reset: cm 0.17.0 should get --no-reset: $(grep '^fix' "${STUB_LOG}")"
+assert_user_work_restored "no-reset"
+grep -q 'query = "SAFE"' app.py || fail "no-reset: fix was not applied"
+new_repo noreset_016
+: > "${STUB_LOG}"
+STUB_FIX_MODE=patch run_loop f-001
+! grep -q -- '--no-reset' "${STUB_LOG}" || fail "no-reset: cm 0.16.0 must not get --no-reset"
+
+echo "✅ cm_remediate_loop.sh tests passed (12 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config, --no-reset)"

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
 #   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail|by-id|ineffective   behavior of `cm fix` (default: patch)
+#   STUB_CM_VERSION=<x.y.z>                       version that `cm --version` reports (default: 0.16.0)
 #   STUB_LOG=<file>                              append every invocation's arguments to this file
 if [ -n "${STUB_LOG:-}" ]; then
   printf '%s\n' "$*" >> "${STUB_LOG}"
@@ -17,8 +18,12 @@ case "${1:-}" in
         sed -i.bak 's/UNSAFE/SAFE/' app.py && rm -f app.py.bak
         ;;
       reset-then-patch)
-        # What Phase 0 observed in cm 0.16.0: `cm fix` resets its workspace before patching.
-        git checkout -q HEAD -- . && git clean -fdq
+        # What Phase 0 observed in cm 0.16.0: `cm fix` resets its workspace before patching (cm 0.17.0 skips that
+        # with --no-reset).
+        case " $* " in
+          *" --no-reset "*) ;;
+          *) git checkout -q HEAD -- . && git clean -fdq ;;
+        esac
         sed -i.bak 's/UNSAFE/SAFE/' app.py && rm -f app.py.bak
         ;;
       patch-with-artifacts)
@@ -45,7 +50,7 @@ case "${1:-}" in
     esac
     ;;
   --version)
-    echo "cm version 0.16.0 (stub)"
+    echo "cm version ${STUB_CM_VERSION:-0.16.0} (stub)"
     ;;
   find)
     # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error|config-error|incomplete; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
