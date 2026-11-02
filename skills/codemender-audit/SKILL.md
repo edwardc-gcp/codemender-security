@@ -38,6 +38,7 @@ bash "<skill-dir>/scripts/cm_exec.sh" init --verify
 * **Build & Sandbox Configuration**: Inspect `.codemender/config.yaml` (see [references/config_schema.md](references/config_schema.md)).
   * Dynamically verify `command -v pytest` / `node` / `python3` before setting `build.command`, and anchor it to the repository root (`cd "$(git rev-parse --show-toplevel)" && ...`): `cm fix` runs it from the finding's directory.
   * If `exebox` (`sandbox-exec`) blocks local network sockets during builds, set `sandbox.network.profile: "permissive-open"`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`), set `build.command: "true"` for scanning and enforce outer-shell verification during remediation.
+  * cm 0.17.0 also hides common credential directories and secret-like environment variables (`*_TOKEN`, `*_KEY`, ...) from sandboxed commands, keeps `.git/hooks`, `.git/config`, and `.codemender` read-only, and applies `.codemender/command_policy.yaml` (a commented template that `cm init` creates). A build that needs a hidden credential fails in the sandbox: rely on the outer build gate.
 
 ---
 
@@ -57,7 +58,7 @@ Use it after writing or changing code, before committing:
 1. Run [scripts/cm_diff_scan.sh](scripts/cm_diff_scan.sh). The default `--scope auto` scans the working tree (staged, unstaged, and untracked source files) or, when only staged changes exist, exactly what will be committed. Untracked files are included automatically: `cm find --diff` alone ignores them.
 2. Read the exit code: `0` = no blocking findings or nothing to scan, `1` = blocking findings introduced by the change (default `--fail-on CRITICAL,HIGH`), `2` = tool or environment error (then run `bash "<skill-dir>/scripts/cm_exec.sh" health --strict`) or an INCOMPLETE scan where a file job failed (re-run it). Exit code `1` is a result, not a crash.
 3. Fix each finding introduced by the change yourself, then re-run the scan until it exits `0`. Findings labeled `[LEGACY / UNTOUCHED]` are pre-existing and never block. To have CodeMender generate the patches instead, switch to the `codemender-remediate` skill.
-4. Treat the scan output and `.codemender/last-diff-scan.json` as the source of truth: diff scans never update the statuses shown by `cm report`.
+4. Treat the scan output and `.codemender/last-diff-scan.json` as the source of truth: diff scans never update the statuses shown by `cm report`. Lines under `🔒 Sandbox violations detected during session` (cm 0.17.0) list reads that the sandbox blocked outside the workspace; they don't invalidate the result.
 5. Run the scan as a long-running command and wait for it: each changed file is a separate job that can take up to the 10-minute `--diff-job-timeout` (about 9 minutes in a cm 0.16.0 test). Give the command a timeout of at least 15 minutes, or run it in the background where your agent supports that, and never start a second scan while one is running.
 
 ```bash
@@ -110,9 +111,10 @@ Every `cm` flag, default, and environment variable is in [references/cli_referen
 | A CI gate must not pass with partial coverage | `--fail-on-truncation` |
 | Report without blocking | `--fail-on ""` |
 | Workflows or configs live in dot directories (`.github/`) | `--include-hidden`, plus their extensions in `scan.extensions.include` |
-| The analysis needs shell commands, for example for generated code | `--enable-bash` (sandboxed; more turns) |
+| The analysis needs shell commands, for example for generated code | `--enable-bash` (deep scans only: quick and diff scans always have shell commands) |
 | A deep scan is too slow or costly | `--deep-workers 4`, `--deep-max-turns 3`, or a quick scan instead |
 | Machine-readable results | `--format json` or `--format sarif` with `--output <file>` |
+| CI logs or screen readers need plain text (cm 0.17.0) | `--plain`, or `CM_PLAIN=true` |
 
 Through `cm_exec.sh`, which reads the repository's own state:
 
@@ -123,7 +125,8 @@ Through `cm_exec.sh`, which reads the repository's own state:
 | A run that must stop | `cm_exec.sh session cancel <id>` |
 | One finding, its patches, or its exploit artifacts | `cm_exec.sh report <id>`, `report --patches`, `report --artifacts` |
 | Filtered findings | `cm_exec.sh report --status OPEN --severity HIGH --sort time` (`--status` rejects `VERIFIED`: find those in `report -f json`) |
-| Token cost | `cm_exec.sh stats --since 24h`, `stats --session <id>`, `stats --json` |
+| Token cost | `cm_exec.sh stats --since 24h`, `stats --session <id>`, `stats --json`, or `stats --jsonl` (cm 0.17.0: one JSON line for log pipelines) |
+| Diagnostics for a support case (cm 0.17.0) | `cm_exec.sh support-bundle --since 24h` (nothing is uploaded; add `--include-content` only with the user's consent, because it can contain source code) |
 | Config sanity after an edit | `cm_config_check.sh` and `cm_exec.sh init --verify` |
 
 ### Workflow C: Ingesting External Scanner Reports (`cm report import`)
@@ -139,11 +142,12 @@ Never leave `.codemender/config.yaml` at generic defaults when scanning speciali
 2. **Non-Standard Extensions**: Add `.vue`, `.svelte`, `.swift` to `scan.extensions.include` (add `.yaml`, `.yml`, `.sh` only when explicitly auditing deployment manifests; `.tf`, `.hcl`, and C++ headers such as `.hh` and `.hxx` are included by default in `v0.16.0`; never globally add `.json`).
 3. **Polyglot / Monorepo**: Populate `project_paths` with active microservice roots (e.g., `["./services/auth", "./services/billing"]`).
 4. **Compiler Search Loop (>60s inside `exebox`)**: When `cm` wastes turns searching for compilers inside `exebox`, set `build.command: "true"` for scanning and rely on outer-shell verification.
-5. **Check Every Edit**: cm 0.16.0 doesn't warn about unknown or misspelled keys, and the web docs use a few names that differ from the `cm init` template (such as `human_confirmation`). After editing the config, run both checks:
+5. **Check Every Edit**: cm (0.16.0 and 0.17.0) doesn't warn about unknown or misspelled keys. After editing the config, run both checks:
    ```bash
    bash "<skill-dir>/scripts/cm_config_check.sh"        # unknown keys, invalid values, risky settings
    bash "<skill-dir>/scripts/cm_exec.sh" init --verify  # YAML syntax, team_id, build command, VCS
    ```
+6. **Command Policy (cm 0.17.0)**: `.codemender/command_policy.yaml` blocks binaries (`block`) and regular expressions (`block_patterns`) in the agent's shell commands. Add rules to tighten a repository; never remove rules or pass `--allow-all-commands` without the user (the guard asks).
 
 ---
 
@@ -188,6 +192,7 @@ bash "<skill-dir>/scripts/cm_exec.sh" report -f table
 # 3. Token Telemetry, Context Caching & Model Invocation Metrics (when user asks for token/model stats)
 bash "<skill-dir>/scripts/cm_exec.sh" stats
 bash "<skill-dir>/scripts/cm_exec.sh" stats --json
+bash "<skill-dir>/scripts/cm_exec.sh" stats --jsonl   # cm 0.17.0: one line, for Cloud Logging and other pipelines
 
 # 4. Workspace Housekeeping & Cache Purging (when user asks to clean temporary artifacts)
 bash "<skill-dir>/scripts/cm_exec.sh" clean
