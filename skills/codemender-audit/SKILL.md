@@ -169,8 +169,8 @@ If `cm verify` appended `.exploit/` to `.gitignore`, revert that edit unless the
 Other verification options: `-c "<focus>"` steers the agent (for example toward one request path), `--model gemini-4-argon` helps with hard cases, and running `cm verify` again on a `DISMISSED` finding re-examines it. Read the verdict in `.exploit/info.yaml` and the reasoning in `.exploit/REPORT.md` (see [references/finding_format.md](references/finding_format.md)).
 
 ### 2. Strict Sandbox Policy & Triage Integrity
-* **NEVER use `--unrestricted` by default**: `--unrestricted` disables **both** the filesystem sandbox (`exebox`) AND the command policy denylist (`full system access`). Running `cm verify --unrestricted` on untrusted repositories exposes the host to Prompt Injection $\rightarrow$ RCE. Require **explicit per-invocation human approval**.
-* **Triage Integrity**: If `cm verify` fails to trigger a crash in the sandbox (e.g., missing live DB or network socket), classify the finding as **`UNCONFIRMED / OPEN`**—**NEVER** label it a "False Positive" unless static source analysis proves strong sanitization exists.
+* **NEVER turn off a safety boundary by default**: `--sandbox=false` turns off the OS sandbox (`exebox`), including its network isolation. Since cm 0.17.0, the workspace path boundary and the `command_policy.yaml` blocklist still apply unless `--allow-all-paths` or `--allow-all-commands` is also passed; cm 0.17.0 removed `--unrestricted`, which turned off all three at once in 0.16.0. Running `cm verify` with any of them on untrusted repositories exposes the host to Prompt Injection $\rightarrow$ RCE. Require **explicit per-invocation human approval** (the guard asks).
+* **Triage Integrity**: If `cm verify` fails to trigger a crash in the sandbox (e.g., missing live DB, network socket, or a credential that the sandbox hides), classify the finding as **`UNCONFIRMED / OPEN`**—**NEVER** label it a "False Positive" unless static source analysis proves strong sanitization exists. Since cm 0.17.0 an unexploitable verdict updates the finding's status (for example to `DISMISSED`); tell the user when the environment limited the verification.
 
 ---
 

@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **CodeMender Public Preview Access**: Access to the Google Cloud CodeMender (`cm`) API and artifacts is currently in **Public Preview** (contact your Google Cloud representative for project allowlisting). Ensure your Google Cloud account is authenticated and associated with an authorized project where the Agent Platform API (`aiplatform.googleapis.com`) is enabled before running scans.
 
-The `codemender-security` plugin equips AI coding agents with autonomous security auditing, exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`) 0.16.0 or later** on the Gemini Enterprise Agent Platform.
+The `codemender-security` plugin equips AI coding agents with autonomous security auditing, exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`) 0.16.0 or later** (0.17.0 recommended) on the Gemini Enterprise Agent Platform.
 
 Built on the open [Agent Plugins specification](https://agent-plugins.org/), this plugin bundles curated Agent Skills, safety guardrails, and operational runbooks for **Google Antigravity**, **Anthropic Claude Code**, and **OpenAI Codex**.
 
@@ -45,7 +45,7 @@ codex plugin marketplace add edwardc-gcp/codemender-security
 Then open `/plugins`, install **CodeMender Security**, and start a new session. Codex skips plugin hooks until you review and trust them, so open `/hooks` and trust the bundled safety hook.
 
 > [!NOTE]
-> Codex hooks cannot prompt for approval yet. Commands that need explicit consent (`install_cm.sh`, `cm update`, `cm_git_hook.sh install`, `--unrestricted`, `--sandbox=false`) are therefore blocked in Codex with an explanation; run them yourself after reviewing them.
+> Codex hooks cannot prompt for approval yet. Commands that need explicit consent (`install_cm.sh`, `cm update`, `cm_git_hook.sh install`, and flags that turn off a safety boundary: `--sandbox=false`, `--allow-all-paths`, `--allow-all-commands`, `--unrestricted`) are therefore blocked in Codex with an explanation; run them yourself after reviewing them.
 
 ---
 
@@ -93,9 +93,9 @@ Before using the plugin, ensure your environment meets the following requirement
 
 ### Safety Rules, Hooks & Execution Wrappers
 - **[`codemender-safety.md`](./rules/codemender-safety.md)** *(Always-On Routing Stub)*:
-  Lightweight (~75-token) always-on rule that enforces wrapper execution and requires explicit operator confirmation before running `install_cm.sh`, `cm_git_hook.sh install`, or `cm verify --unrestricted`.
+  Lightweight (~75-token) always-on rule that enforces wrapper execution and requires explicit operator confirmation before running `install_cm.sh`, `cm update`, `cm_git_hook.sh install`, or any `cm` run that turns off a safety boundary (`--sandbox=false`, `--allow-all-paths`, `--allow-all-commands`).
 - **[`hooks.json`](./hooks.json), [`hooks/hooks.json`](./hooks/hooks.json) & [`pre_tool_guard.sh`](./scripts/pre_tool_guard.sh)** *(Deterministic `PreToolUse` Interceptor)*:
-  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh`, `cm_git_hook.sh install`, and `--unrestricted` verification. Antigravity loads `hooks.json`; Claude Code and Codex load `hooks/hooks.json`.
+  Pure-Bash runtime hook (`<2ms` fast-path) that intercepts shell commands before execution—blocking unwrapped stateful `cm` subcommands and `cm init -y` while enforcing interactive confirmation (`force_ask`) for `install_cm.sh`, `cm update`, `cm_git_hook.sh install`, and every flag that turns off a safety boundary (`--sandbox=false` in any spelling, `--allow-all-paths`, `--allow-all-commands`, and the older `--unrestricted`). Antigravity loads `hooks.json`; Claude Code and Codex load `hooks/hooks.json`.
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Runs `cm` with `HOME` and `CM_HOME` scoped to the repository (`.codemender/`), forwards `GIT_CONFIG_GLOBAL`, `CLOUDSDK_CONFIG`, Application Default Credentials, and `GOOGLE_CLOUD_PROJECT`, blocks `cm init -y` and `.codemender/config.yaml` overwrites, and registers CodeMender's runtime paths (`.codemender/`, `.cm_project`, `.exploit/`, caches) in `.git/info/exclude`.
 - **[`cm_diff_scan.sh`](./scripts/cm_diff_scan.sh)** *(Local Change Scanner)*:

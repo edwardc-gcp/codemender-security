@@ -60,8 +60,8 @@ bash "<plugin-root>/scripts/cm_exec.sh" report -f sarif > codemender-results.sar
 ## 3. Core Guardrails Summary
 
 1. **Zero Binary Auto-Install**: Never execute [scripts/install_cm.sh](scripts/install_cm.sh) without explicit human approval.
-2. **No Unconfirmed `--unrestricted`**: `--unrestricted` disables both the OS filesystem sandbox (`exebox`) and command denylist (RCE hazard on untrusted repos). Require per-invocation user approval.
-3. **Triage Integrity**: If `cm verify` fails to trigger a dynamic crash in the sandbox, mark the finding as **`UNCONFIRMED / OPEN`**—never dismiss as a "False Positive" without manual source proof.
+2. **No Unconfirmed Boundary Flags**: `--sandbox=false` turns off the OS sandbox (`exebox`) and its network isolation; cm 0.17.0's `--allow-all-paths` and `--allow-all-commands` turn off the path boundary and the command policy (cm 0.16.0's `--unrestricted` turned off all three). Each is an RCE hazard on untrusted repos: require per-invocation user approval.
+3. **Triage Integrity**: If `cm verify` fails to trigger a dynamic crash in the sandbox, mark the finding as **`UNCONFIRMED / OPEN`**—never dismiss as a "False Positive" without manual source proof, even when cm 0.17.0 records the verdict as `DISMISSED`.
 
 ---
 
