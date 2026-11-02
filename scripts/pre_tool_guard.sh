@@ -96,12 +96,14 @@ if cmd_matches "${CM_POS}[[:space:]]+init([[:space:]][^;&|]*)?[[:space:]](-y|--y
   exit 0
 fi
 
-# Rule 2a: Force interactive user confirmation when the sandbox is disabled (`--unrestricted` or `--sandbox=false`),
-# whether cm is called directly or through the plugin wrappers (RCE hazard)
-SANDBOX_OFF="[[:space:]](--unrestricted|--sandbox(=|[[:space:]]+)(false|0))${END}"
-if cmd_matches "${CM_POS}([[:space:]][^;&|]*)?${SANDBOX_OFF}" \
-  || cmd_matches "(^|[^a-zA-Z0-9_-])(cm_exec|cm_remediate_loop|cm_diff_scan)\.sh([[:space:]][^;&|]*)?${SANDBOX_OFF}"; then
-  REASON="CRITICAL SECURITY WARNING: '--unrestricted' / '--sandbox=false' disables the CodeMender sandbox (Prompt Injection -> RCE risk; cm fix workspace resets can also delete uncommitted work). Explicit human confirmation is required."
+# Rule 2a: Force interactive user confirmation when a run turns off a CodeMender safety boundary, whether cm is called
+# directly or through the plugin wrappers (RCE hazard): the OS sandbox (`--sandbox=false`, in every spelling cm reads as
+# false), the workspace path boundary (`--allow-all-paths`) or the command policy (`--allow-all-commands`) in cm 0.17.0+,
+# or all of them at once (`--unrestricted`, cm 0.16.0 and earlier).
+BOUNDARY_OFF='[[:space:]](--(unrestricted|allow-all-paths|allow-all-commands)(=[^[:space:];&|)`]*)?|--sandbox(=|[[:space:]]+)(false|False|FALSE|f|F|0))'"${END}"
+if cmd_matches "${CM_POS}([[:space:]][^;&|]*)?${BOUNDARY_OFF}" \
+  || cmd_matches "(^|[^a-zA-Z0-9_-])(cm_exec|cm_remediate_loop|cm_diff_scan)\.sh([[:space:]][^;&|]*)?${BOUNDARY_OFF}"; then
+  REASON="CRITICAL SECURITY WARNING: this run turns off a CodeMender safety boundary (--sandbox=false: the OS sandbox; --allow-all-paths: the workspace path boundary; --allow-all-commands: the command policy; --unrestricted: all of them, before cm 0.17.0). Prompt injection could then run code on this machine. Explicit human confirmation is required."
   emit_response "force_ask" "${REASON}"
   exit 0
 fi

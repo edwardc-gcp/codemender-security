@@ -96,6 +96,15 @@ cases = [
     ("(cd app; cm init)", "deny"),
     ("bash scripts/cm_diff_scan.sh -- --unrestricted", "force_ask"),
     ("sudo cm update", "force_ask"),
+    # cm 0.17.0 safety boundaries: path boundary, command policy, and every spelling cm reads as false
+    ("cm fix 1 --allow-all-paths", "force_ask"),
+    ("bash scripts/cm_exec.sh fix 1 --allow-all-commands -y", "force_ask"),
+    ("bash scripts/cm_remediate_loop.sh f-1 -- --allow-all-paths=true", "force_ask"),
+    ("bash scripts/cm_diff_scan.sh -- --allow-all-commands", "force_ask"),
+    ("cm session resume abc -y --sandbox=False", "force_ask"),
+    ("bash scripts/cm_exec.sh verify 1 --sandbox=f -y", "force_ask"),
+    ("bash scripts/cm_exec.sh find . --diff --sandbox=true -y", "allow"),
+    ("git commit -m \"docs: explain --allow-all-paths\"", "allow"),
 ]
 count = 0
 for minimal in (False, True):
@@ -131,13 +140,14 @@ for minimal in (False, True):
     for build, consent in ((claude, "ask"), (codex, "deny")):
         assert run(build("cm init -y"), minimal) == "deny"
         assert run(build("cm verify 123 --unrestricted"), minimal) == consent
+        assert run(build("bash scripts/cm_exec.sh fix 1 --allow-all-commands -y"), minimal) == consent
         assert run(build("bash scripts/install_cm.sh"), minimal) == consent
         assert run(build("bash scripts/cm_git_hook.sh install"), minimal) == consent
         assert run(build("cm find . -y"), minimal) == "deny"
         assert run(build("bash /opt/p/skills/codemender-audit/scripts/cm_exec.sh find . --diff -y"), minimal) == "allow"
         assert run(build("ls -la"), minimal) == "allow"
         assert run(build("git commit -m \"feat: pass extra cm find flags\""), minimal) == "allow"
-        count += 8
+        count += 9
     assert run(claude("cm update"), minimal, {"PLUGIN_ROOT": "/opt/p"}) == "deny"
     count += 1
 print(f"✅ Claude Code / Codex hook contract tests passed ({count}/{count} assertions)")
