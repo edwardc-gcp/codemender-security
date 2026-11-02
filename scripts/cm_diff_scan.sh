@@ -15,7 +15,8 @@
 #
 # Flags after `--` go to `cm find` unchanged, for example --model gemini-4-argon, --diff-max-neighbors 20,
 # --diff-workers 8, --diff-job-timeout 20m, --fail-on-truncation, or --include-hidden. The script sets --diff, --staged,
-# --format, --output, --fail-on, and -y itself, and refuses sandbox flags (--unrestricted, --sandbox).
+# --format, --output, --fail-on, and -y itself, and refuses flags that turn off a safety boundary (--sandbox,
+# --allow-all-paths, --allow-all-commands, and the older --unrestricted).
 #
 # Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
 #             CRITICAL,HIGH; an empty value only reports), 2 = tool or environment error, or an INCOMPLETE scan
@@ -59,8 +60,8 @@ for arg in ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; do
       echo "❌ ${arg} is set by cm_diff_scan.sh; use its own options (--scope, --base, --fail-on, --output) instead." >&2
       exit 2
       ;;
-    --unrestricted|--sandbox|--sandbox=*)
-      echo "❌ ${arg} changes the CodeMender sandbox, so cm_diff_scan.sh refuses it. Only the user can approve that, for a cm_exec.sh find run." >&2
+    --unrestricted|--unrestricted=*|--sandbox|--sandbox=*|--allow-all-paths|--allow-all-paths=*|--allow-all-commands|--allow-all-commands=*)
+      echo "❌ ${arg} changes a CodeMender safety boundary (sandbox, path boundary, or command policy), so cm_diff_scan.sh refuses it. Only the user can approve that, for a cm_exec.sh find run." >&2
       exit 2
       ;;
   esac

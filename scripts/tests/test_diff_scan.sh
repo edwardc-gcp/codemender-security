@@ -128,12 +128,12 @@ find_call | grep -q -- '--fail-on= ' || fail "last-commit: expected an empty --f
 STUB_FIND_MODE=clean scan --scope branch --base "${BASE_SHA}"
 find_call | grep -q -- "--diff=${BASE_SHA}" || fail "branch: expected --diff=<merge base>"
 
-# 10. Flags after -- reach cm find; flags the script owns and sandbox flags are refused without calling cm.
+# 10. Flags after -- reach cm find; flags the script owns and safety-boundary flags are refused without calling cm.
 : > "${STUB_LOG}"
 STUB_FIND_MODE=clean scan --scope last-commit -- --model gemini-4-argon --diff-max-neighbors 20 --fail-on-truncation
 [ "${RC}" -eq 0 ] || fail "passthrough: expected exit 0, got ${RC}: ${OUT}"
 find_call | grep -q -- '--model gemini-4-argon --diff-max-neighbors 20 --fail-on-truncation' || fail "passthrough: extra flags missing: $(find_call)"
-for refused in --output=x.json --staged --unrestricted --sandbox=false -y; do
+for refused in --output=x.json --staged --unrestricted --sandbox=false --allow-all-paths --allow-all-commands=true -y; do
   : > "${STUB_LOG}"
   scan --scope last-commit -- "${refused}"
   [ "${RC}" -eq 2 ] || fail "passthrough: ${refused} should be refused with exit 2, got ${RC}"
