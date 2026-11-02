@@ -2,6 +2,21 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.5.0] - 2026-11-02
+
+Works with CodeMender CLI 0.16.0 and 0.17.0 (0.17.0 recommended).
+
+### Safety
+- The guard asks before CodeMender 0.17.0's `--allow-all-paths` and `--allow-all-commands`, which turn off the path boundary and the command policy, and before every spelling of `--sandbox=false` that cm accepts (`=False`, `=FALSE`, `=f`). The safety rule and docs describe these flags instead of `--unrestricted`, which 0.17.0 removed.
+- `cm_diff_scan.sh` refuses `--allow-all-paths` and `--allow-all-commands` after `--`.
+
+### CodeMender 0.17.0 Support
+- `cm_remediate_loop.sh` passes `--no-reset` to `cm fix` on 0.17.0 and later (the checkpoint commit stays), and keeps untracked `*.sarif` reports when it cleans up.
+- `cm_diff_scan.sh` explains setup failures by their new exit codes (`10` credentials, `20` config, `30` reachability, `40` authorization, `50` timeout) instead of always pointing at credentials.
+- `cm_config_check.sh` knows `output.plain` and `execution.interactive_mode`, and notes when interactive mode is off.
+- The CLI and config references cover 0.17.0: `--plain`, `--no-reset`, `cm stats --jsonl`, `cm support-bundle`, confirmation precedence, `command_policy.yaml`, the new sandbox protections, setup exit codes, model retirements, and new messages. The skills use them.
+- Observed behaviors re-checked on 0.17.0: unknown config keys still aren't flagged, `cm fix --export` still isn't implemented, `cm report --status VERIFIED` is still rejected, and the `--architecture` example in `cm verify --help` is still an unknown flag.
+
 ## [1.4.2] - 2026-10-28
 
 - `cm_remediate_loop.sh` reads `build.command` the way YAML does. A double-quoted command with escaped quotes, such as `"cd \"$(git rev-parse --show-toplevel)\" && npm run build"`, no longer fails the outer build gate and reverts every fix. A no-op `build.command` (`"true"`) now makes the gate probe the project instead of turning it off.
