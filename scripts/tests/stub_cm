@@ -48,7 +48,7 @@ case "${1:-}" in
     echo "cm version 0.16.0 (stub)"
     ;;
   find)
-    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
+    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error|config-error|incomplete; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
     # dynamic reports one HIGH finding (id f-<name>) for each of app.py / db.py that still contains UNSAFE.
     out=""
     fail_on="CRITICAL,HIGH"
@@ -79,6 +79,11 @@ case "${1:-}" in
       error)
         echo "Error: retrieving VCS diff: git diff failed: exit status 128" >&2
         exit 1
+        ;;
+      config-error)
+        # cm 0.17.0 exits with the failing setup layer's code, here 20 (config), without a report.
+        echo "Error: loading config: parsing config: yaml: unmarshal errors:" >&2
+        exit 20
         ;;
       incomplete)
         # cm 0.16 marks multi-file scans INCOMPLETE when a file job fails, yet still exits 0 when nothing blocks.

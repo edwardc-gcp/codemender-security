@@ -147,4 +147,11 @@ STUB_FIND_MODE=incomplete scan --scope last-commit
 printf '%s\n' "${OUT}" | grep -q 'INCOMPLETE' || fail "incomplete: missing INCOMPLETE message"
 [ ! -e .codemender/last-diff-scan.meta ] || fail "incomplete: no meta file should be written"
 
-echo "✅ cm_diff_scan.sh tests passed (11 scenarios with stub cm)"
+# 12. A cm 0.17.0 setup failure (exit 20, config) is a tool error: exit 2 with a hint for that layer; --help shows the
+#     whole header.
+STUB_FIND_MODE=config-error scan --scope last-commit
+[ "${RC}" -eq 2 ] || fail "config-error: expected exit 2, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'exit 20.*configuration' || fail "config-error: missing configuration hint: ${OUT}"
+bash "${SCAN}" --help | tail -n 1 | grep -q 'The JSON report is written' || fail "usage: --help should end with the report line"
+
+echo "✅ cm_diff_scan.sh tests passed (12 scenarios with stub cm)"

@@ -20,7 +20,9 @@
 #
 # Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
 #             CRITICAL,HIGH; an empty value only reports), 2 = tool or environment error, or an INCOMPLETE scan
-#             (a file job failed, so a clean result doesn't cover every changed file).
+#             (a file job failed, so a clean result doesn't cover every changed file). Since cm 0.17.0, setup failures
+#             have their own cm exit codes (10 credentials, 20 config, 30 reachability, 40 authorization, 50 timeout);
+#             they also exit 2, with a hint for that layer.
 # The JSON report is written to --output (default: .codemender/last-diff-scan.json) with a .meta file next to it.
 
 set -uo pipefail
@@ -37,7 +39,7 @@ OUTPUT=""
 CONTEXT=""
 EXTRA_ARGS=()
 
-usage() { sed -n '2,23p' "$0" | sed -E 's/^# ?//'; }
+usage() { sed -n '2,26p' "$0" | sed -E 's/^# ?//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -346,5 +348,14 @@ if [ "${RC}" -eq 0 ] || { [ "${RC}" -eq 1 ] && [ -s "${REPORT}" ]; }; then
   exit "${RC}"
 fi
 
-echo "❌ cm find --diff failed (exit ${RC}) without producing a report. Check credentials and connectivity: bash \"${CM_EXEC}\" health --strict" >&2
+# cm 0.17.0+ exits with the failing setup layer's code (the same codes as `cm health`).
+case "${RC}" in
+  10) HINT="credentials: run 'gcloud auth application-default login' and set GOOGLE_CLOUD_PROJECT" ;;
+  20) HINT="configuration: fix .codemender/config.yaml, then run cm_config_check.sh and cm_exec.sh init --verify" ;;
+  30) HINT="reachability: check network access to the CodeMender endpoint (proxy, DNS, VPC Service Controls)" ;;
+  40) HINT="authorization: the caller needs the Agent Platform User role (roles/aiplatform.user) on a project with CodeMender access" ;;
+  50) HINT="timeout: check the network and retry" ;;
+  *) HINT="check credentials and connectivity" ;;
+esac
+echo "❌ cm find --diff failed (exit ${RC}) without producing a report (${HINT}). Details: bash \"${CM_EXEC}\" health --strict" >&2
 exit 2
