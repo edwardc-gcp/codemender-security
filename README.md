@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **CodeMender Public Preview Access**: Access to the Google Cloud CodeMender (`cm`) API and artifacts is currently in **Public Preview** (contact your Google Cloud representative for project allowlisting). Ensure your Google Cloud account is authenticated and associated with an authorized project where the Agent Platform API (`aiplatform.googleapis.com`) is enabled before running scans.
 
-The `codemender-security` plugin equips AI coding agents with autonomous security auditing, exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`) 0.16.0 or later** (0.17.0 recommended) on the Gemini Enterprise Agent Platform.
+The `codemender-security` plugin equips AI coding agents with autonomous security auditing, exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`) 0.16.0 or later** (0.18.0 recommended) on the Gemini Enterprise Agent Platform.
 
 Built on the open [Agent Plugins specification](https://agent-plugins.org/), this plugin bundles curated Agent Skills, safety guardrails, and operational runbooks for **Google Antigravity**, **Anthropic Claude Code**, and **OpenAI Codex**.
 
@@ -76,7 +76,7 @@ Before using the plugin, ensure your environment meets the following requirement
    *Re-running `install_cm.sh` automatically checks for newer remote releases and upgrades `cm` when available (or run `cm update` manually).*
 
 4. **Privacy & Telemetry Opt-Out (Optional)**:
-   CodeMender follows a local-first architecture (only targeted code snippets are transmitted via the Interactions API). CLI telemetry (which excludes source code, findings, and identity) is enabled by default; to disable it, export:
+   CodeMender follows a local-first architecture (only targeted code snippets are transmitted via the Interactions API). CLI telemetry is on by default. Per the CodeMender docs, its events can identify your Google Account or service account and your project, but never contain source code, file contents, file paths, prompts, findings, or patches. To turn it off, export:
    ```bash
    export CM_TELEMETRY_OPT_OUT=1
    ```
@@ -99,9 +99,9 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`cm_exec.sh`](./scripts/cm_exec.sh)** *(Stateless Workspace Wrapper)*:
   Runs `cm` with `HOME` and `CM_HOME` scoped to the repository (`.codemender/`), forwards `GIT_CONFIG_GLOBAL`, `CLOUDSDK_CONFIG`, Application Default Credentials, and `GOOGLE_CLOUD_PROJECT`, blocks `cm init -y` and `.codemender/config.yaml` overwrites, and registers CodeMender's runtime paths (`.codemender/`, `.cm_project`, `.exploit/`, caches) in `.git/info/exclude`.
 - **[`cm_diff_scan.sh`](./scripts/cm_diff_scan.sh)** *(Local Change Scanner)*:
-  Runs CodeMender diff mode on your working tree, staged changes, branch, or last commit; includes untracked source files (which `cm find --diff` alone ignores) through a temporary `git add -N`; skips the scan when no source file changed; passes extra `cm find` flags after `--` (but refuses the ones that turn off a safety boundary); and exits `0` clean / `1` blocking findings / `2` error or incomplete scan, with a hint for CodeMender 0.17.0's setup exit codes (credentials, config, reachability, authorization, timeout).
+  Runs CodeMender diff mode on your working tree, staged changes, branch, or last commit; includes untracked source files (which `cm find --diff` alone ignores) through a temporary `git add -N`; skips the scan when no source file changed; previews the scope at no cost with `--dry-run` (CodeMender 0.18.0), never recording a preview as a result; passes extra `cm find` flags after `--` (but refuses the ones that turn off a safety boundary, and the ones that would turn the scan into a preview or an interactive session); and exits `0` clean / `1` blocking findings / `2` error or incomplete scan, with a hint for CodeMender 0.17.0's setup exit codes (credentials, config, reachability, authorization, timeout) and cm's own message for other failures.
 - **[`cm_git_hook.sh`](./scripts/cm_git_hook.sh)** *(Opt-In Git Hook)*:
-  Installs a pre-commit hook that scans the staged changes (or, with `--pre-push`, a pre-push hook that scans the pushed branch) and blocks on `CRITICAL`/`HIGH` findings. It reuses an earlier `cm_diff_scan.sh --scope staged` result for the same content, never overwrites existing hooks, and doesn't block when the scan can't run. Skip once with `--no-verify`; keep a CI gate as well.
+  Installs a pre-commit hook that scans the staged changes (or, with `--pre-push`, a pre-push hook that scans the pushed branch) and blocks on `CRITICAL`/`HIGH` findings. It reuses an earlier `cm_diff_scan.sh --scope staged` result for the same content (only a real findings report counts, never a preview), never overwrites existing hooks, and doesn't block when the scan can't run. Skip once with `--no-verify`; keep a CI gate as well.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
   Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), passes `--no-reset` to `cm fix` on CodeMender 0.17.0 and later, runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis (extra `cm fix` flags such as `--model` go after `--`), and a re-scan of the change after every fix to pick the next target and catch regressions.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
