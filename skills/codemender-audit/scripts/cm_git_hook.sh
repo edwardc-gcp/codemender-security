@@ -154,6 +154,27 @@ status_hook() {
 # Reuses the last `cm_diff_scan.sh --scope staged` result when it covered the whole repository with the same HEAD,
 # staged tree, and --fail-on. Sets REUSED_RC to that scan's exit code (0 or 1).
 REUSED_RC=""
+
+# True when the file holds a findings report (a JSON array, or an object with a "findings" array). A scope preview from
+# cm 0.18.0's --dry-run, which plugin 1.5.0 could record as a clean staged scan, doesn't count.
+report_is_findings() {
+  [ -s "$1" ] || return 1
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$1" 2>/dev/null <<'PY'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(data, list) or (isinstance(data, dict) and isinstance(data.get("findings"), list)) else 1)
+PY
+  elif command -v jq >/dev/null 2>&1; then
+    jq -e 'type == "array" or (type == "object" and (.findings | type) == "array")' "$1" >/dev/null 2>&1
+  else
+    return 0
+  fi
+}
+
 reuse_staged_result() {
   local root meta tree head
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
@@ -163,6 +184,7 @@ reuse_staged_result() {
   head="$(git rev-parse HEAD 2>/dev/null)" || return 1
   grep -qxF "scope=staged" "${meta}" && grep -qxF "path=." "${meta}" && grep -qxF "head=${head}" "${meta}" \
     && grep -qxF "tree=${tree}" "${meta}" && grep -qxF "fail_on=$1" "${meta}" || return 1
+  report_is_findings "${root}/.codemender/last-diff-scan.json" || return 1
   REUSED_RC="$(sed -n 's/^exit_code=//p' "${meta}" | head -n 1)"
   case "${REUSED_RC}" in
     0|1) return 0 ;;

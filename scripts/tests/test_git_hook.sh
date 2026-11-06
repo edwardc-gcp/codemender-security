@@ -161,4 +161,20 @@ grep -q -- "^find .*--diff=${REMOTE_SHA}" "${STUB_LOG}" || fail "pre-push: expec
 STUB_FIND_MODE=clean capture git push -q origin HEAD
 [ "${RC}" -eq 0 ] || fail "pre-push: a clean push should succeed: ${OUT}"
 
-echo "✅ cm_git_hook.sh tests passed (11 scenarios with stub cm: install, block, reuse, fail-open, foreign hooks, pre-push)"
+# 12. A recorded scope preview isn't reused: plugin 1.5.0 could write a .meta with exit_code=0 next to the JSON object
+#     that cm 0.18.0's --dry-run produces. The hook scans instead.
+new_repo preview_meta
+bash "${HOOK_SCRIPT}" install > /dev/null
+echo 'query = "UNSAFE"' > app.py
+git add app.py
+mkdir -p .codemender
+printf '{"project_root": "%s", "target_scope": ".", "candidate_files": ["app.py"]}\n' "$(pwd)" > .codemender/last-diff-scan.json
+printf 'scope=staged\npath=.\nbase=HEAD\nhead=%s\ntree=%s\nfail_on=CRITICAL,HIGH\nexit_code=0\ncreated_at=2026-11-06T00:00:00Z\n' \
+  "$(git rev-parse HEAD)" "$(git write-tree)" > .codemender/last-diff-scan.meta
+: > "${STUB_LOG}"
+STUB_FIND_MODE=findings capture git commit -qm "preview meta"
+[ "${RC}" -ne 0 ] || fail "preview meta: the hook must scan instead of reusing a scope preview: ${OUT}"
+[ "$(find_calls)" -eq 1 ] || fail "preview meta: expected one scan, got $(find_calls)"
+! printf '%s\n' "${OUT}" | grep -q 'already passed a diff scan' || fail "preview meta: must not report a reused pass: ${OUT}"
+
+echo "✅ cm_git_hook.sh tests passed (12 scenarios with stub cm: install, block, reuse, fail-open, foreign hooks, pre-push, preview meta)"
