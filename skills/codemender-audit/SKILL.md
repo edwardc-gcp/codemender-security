@@ -105,7 +105,8 @@ Every `cm` flag, default, and environment variable is in [references/cli_referen
 | :--- | :--- |
 | You know the threat model, trust boundaries, or focus area | `-c "<context>"` (scans, `verify`, and `fix`) |
 | Complex cross-file logic, or the default model's findings look shallow | `--model gemini-4-argon` (safety blocks retry on fallback models; `--no-model-fallback` forbids that) |
-| A widely used function or API contract changed | `cm_diff_scan.sh --depth 2`, or `-- --diff-max-neighbors 20` |
+| A widely used function or API contract changed | `-- --diff-max-neighbors 20 --fail-on-truncation`; for callers farther away, a deep scan of their directories after the user agrees (`cm_diff_scan.sh --depth 2` works only up to cm 0.17.0: cm 0.18.0 always resolves 1 hop) |
+| You want to see what a diff scan will cover before it spends tokens (cm 0.18.0) | `cm_diff_scan.sh --dry-run`: a free preview of the changed files, 1-hop neighbors, and architecture, never a scan result |
 | Large files time out, so the scan is INCOMPLETE | `-- --diff-job-timeout 20m` |
 | Many files changed | `-- --diff-workers 8` |
 | A CI gate must not pass with partial coverage | `--fail-on-truncation` |
@@ -130,7 +131,7 @@ Through `cm_exec.sh`, which reads the repository's own state:
 | Config sanity after an edit | `cm_config_check.sh` and `cm_exec.sh init --verify` |
 
 ### Workflow C: Ingesting External Scanner Reports (`cm report import`)
-To verify findings from CodeQL, Semgrep, Snyk, or custom auditors (see [references/finding_format.md](references/finding_format.md) for the 6-field Simple JSON schema):
+To verify findings from CodeQL, Semgrep, Snyk, or custom auditors (see [references/finding_format.md](references/finding_format.md) for the Simple JSON schema):
 ```bash
 bash "<skill-dir>/scripts/cm_exec.sh" report import -f third-party-findings.json
 bash "<skill-dir>/scripts/cm_exec.sh" report import -f findings.sarif

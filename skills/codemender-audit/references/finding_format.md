@@ -68,13 +68,15 @@ Before reporting a vulnerability to the user:
 
 ## 2b. Official `cm report import` Simple JSON Schema
 
-When importing findings from external scanners via `cm report import -f findings.json`, use the official Simple JSON array schema (basic SARIF 2.1.0 is also supported on a best-effort basis). Pass `-p <project-dir>` when relative `file_path` values aren't relative to the current directory:
+When importing findings from external scanners via `cm report import -f findings.json`, use a JSON array of findings, as in the public import docs. A SARIF 2.1.0 report also works; `cm report import --help` lists the formats that your CLI release supports. Pass `-p <project-dir>` when relative `file_path` values aren't relative to the current directory:
 
 ```json
 [
   {
     "file_path": "src/auth/login.py",
-    "line": 42,
+    "start_line": 42,
+    "end_line": 47,
+    "snippet": "cursor.execute(\"SELECT * FROM users WHERE id = \" + user_id)",
     "title": "SQL Injection in login query",
     "message": "User input from request.args is concatenated directly into SQL execution.",
     "severity": "HIGH",
@@ -82,6 +84,12 @@ When importing findings from external scanners via `cm report import -f findings
   }
 ]
 ```
+
+* **`file_path`** (required): the affected file.
+* **`start_line` / `end_line`**: the first and last lines of the vulnerable code; a finding can span several lines. For a single line, `line` works instead.
+* **`snippet`**: the vulnerable code. With neither a line range nor a snippet, the finding covers the whole file, and `cm fix` searches the file for the vulnerable code.
+* **`title`, `message`, `analysis`, `vuln_type`**: the description; each finding needs at least one of them.
+* **`severity`**: `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW` (default `MEDIUM`).
 
 ---
 
