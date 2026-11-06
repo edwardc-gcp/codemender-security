@@ -1,6 +1,6 @@
-# CodeMender CLI Command Reference (cm 0.17.0)
+# CodeMender CLI Command Reference (cm 0.18.0)
 
-Every public `cm` command, flag, environment variable, and runtime limit of **CodeMender CLI 0.17.0**, with notes where 0.16.0 differs. Sources: the `--help` output, the `cm init` template, the public CodeMender docs and release notes, and test runs of the public CLI (marked "observed"). Nothing here comes from internal or undocumented sources. Print the installed version with `cm --version` (there is no `cm version` subcommand).
+Every public `cm` command, flag, environment variable, and runtime limit of **CodeMender CLI 0.18.0**, with notes where 0.17.0 and 0.16.0 differ. Sources: the `--help` output, the `cm init` template, the public CodeMender docs and release notes, and test runs of the public CLI (marked "observed"). Nothing here comes from internal or undocumented sources. Print the installed version with `cm --version` (there is no `cm version` subcommand).
 
 Examples show bare `cm` for readability. In an agent session, run every stateful subcommand through `cm_exec.sh` (Section 1). For `config.yaml` keys, see `config_schema.md`.
 
@@ -23,7 +23,7 @@ On every call, the wrapper:
 * Refuses `-y`/`--yes` on `cm init`, and skips `cm init` when `.codemender/config.yaml` already exists (`cm init --verify` always runs, because it only reads).
 * Adds `--compact` to `find`, `verify`, and `fix` (unless `--compact` or `-v` is passed), and `--bypass-warning` to `verify` and `fix`.
 
-The other bundled scripts accept extra `cm` flags after `--`: `cm_diff_scan.sh ... -- <cm find flags>` and `cm_remediate_loop.sh ... -- <cm fix flags>`. On cm 0.17.0 and later, `cm_remediate_loop.sh` also passes `--no-reset` to every `cm fix` call.
+The other bundled scripts accept extra `cm` flags after `--`: `cm_diff_scan.sh ... -- <cm find flags>` and `cm_remediate_loop.sh ... -- <cm fix flags>`. On cm 0.17.0 and later, `cm_remediate_loop.sh` also passes `--no-reset` to every `cm fix` call. `cm_diff_scan.sh` has its own `--dry-run` (0.18.0) and refuses `--dry-run` and `--validate` after `--`; its `--depth` becomes `--diff-depth` only up to cm 0.17.0.
 
 ---
 
@@ -78,6 +78,8 @@ When none applies and no one can answer (for example in CI without a terminal), 
 | `--include-hidden` | off | all | Dot-prefixed directories and files matter, such as `.github/workflows` (or `scan.include_hidden: true`). Add the file extensions too. |
 | `--format <fmt>` | `table` | all | `json` for scripts, `sarif` (SARIF v2.1.0) for code scanning. |
 | `--output <file>` | stdout | all | The report should go to a file (written for every mode since 0.12.0). |
+| `--dry-run` | off | all | 0.18.0: you want to see the detected architecture and the candidate scan scope first, at no cost: no scan session, 0 tokens, exit `0` (observed). `--output` then gets a JSON preview object, not findings. For a diff scope, use `cm_diff_scan.sh --dry-run`. Can't be combined with `--validate`. |
+| `--validate` | off | all | 0.18.0: a person at a terminal wants to confirm or refine the detected architecture and security context before the scan. Interactive, so not for agent runs (`cm_diff_scan.sh` refuses it). Can't be combined with `--dry-run`. |
 | `-y, --yes` | off | all | Always in agent and CI runs. |
 | `--deep` | (default mode) | deep | Only for backward compatibility. |
 | `--deep-workers <n>` | `8` | deep | Lower it (1 to 16) on small machines or quota limits; raise it for large repositories. |
@@ -86,7 +88,7 @@ When none applies and no one can answer (for example in CI without a terminal), 
 | `--quick` | off | quick | You want a fast single-session look. |
 | `--diff[=<ref>]` | `HEAD` | diff | Scanning changes against `<ref>` (Section 4). |
 | `--staged` | off | diff | Only the staged changes should be scanned (pre-commit). |
-| `--diff-depth <n>` | `1` | diff | A change alters a contract or signature used farther away (impact depth in hops). |
+| `--diff-depth <n>` | `1` | diff | **Removed in 0.18.0** (`Error: unknown flag: --diff-depth`, observed), where diff scans always resolve 1 hop. Up to 0.17.0: a change alters a contract or signature used farther away (impact depth in hops). |
 | `--diff-workers <n>` | `4` | diff | Many files changed (1 to 16 concurrent file jobs). |
 | `--diff-max-neighbors <n>` | `10` | diff | A widely used function changed and more callers should be inspected. |
 | `--diff-job-timeout <duration>` | `10m` | diff | Large files time out (the scan becomes INCOMPLETE); the timeout already scales for large files. |
@@ -121,20 +123,23 @@ cm find . -y --deep-workers=8 --format sarif --output deep-scan.sarif
 How to read the results (observed with cm 0.16.0 and 0.17.0):
 * **Untracked files are not scan targets.** A brand-new file is seen only indirectly, if at all, through a changed file that uses it. Register new files with `git add -N <file>` (intent-to-add) before scanning. `cm_diff_scan.sh` does this automatically and undoes it afterwards.
 * **Legacy isolation**: pre-existing issues in untouched code get a `[LEGACY / UNTOUCHED]` title prefix and never trigger `--fail-on`.
-* **Exit codes**: `0` means no blocking findings, including when nothing changed (it returns in about a second, without model calls). `1` means blocking findings **or** another error, such as an unknown flag or ref. Since 0.17.0, setup failures exit with the `cm health` codes instead: `10` credentials, `20` config (observed for an invalid `config.yaml`), `30` reachability, `40` authorization, `50` timeout. Tell findings from errors by whether the `--output` file was written.
+* **Exit codes**: `0` means no blocking findings, including when nothing changed (it returns in about a second, without model calls). `1` means blocking findings **or** another error, such as an unknown flag (for example `--diff-depth` in 0.18.0) or ref. Since 0.17.0, setup failures exit with the `cm health` codes instead: `10` credentials, `20` config (observed for an invalid `config.yaml`), `30` reachability, `40` authorization, `50` timeout. Tell findings from errors by whether the `--output` file was written.
 * **INCOMPLETE scans**: a file job that fails (`[1/2] ❌ app.py: start session failed`) leaves the summary at `N succeeded, M failed` and the session INCOMPLETE, yet the exit code can still be `0`. Treat that as unscanned code and re-run; `cm_diff_scan.sh` exits `2` in this case.
 * **Sandbox violations** (0.17.0): the output can include `🔒 Sandbox violations detected during session:` followed by `sandbox: denied read ...` lines. They list reads that the sandbox blocked outside the allowed directories; the scan result is still valid.
+* **Impact depth** (0.18.0): diff scans resolve 1-hop impact (callers, importers, and callees of the changed symbols); `--diff-depth`, which went deeper up to 0.17.0, is gone. For more 1-hop neighbors, raise `--diff-max-neighbors`; when partial coverage must fail, add `--fail-on-truncation`; for callers farther away, deep-scan their directories.
+* **Dry run** (0.18.0, observed): `--dry-run` prints the same scope header (modified files, modified symbols, and 1-hop neighbors) plus a codebase architecture and scope summary, uses no tokens, and exits `0`. Its `--output` file is a JSON object (`project_root`, `languages`, `frameworks`, `auth_containers`, `entrypoints`, `route_files`, `total_files`, `candidate_files`, `pruned_files`, `prune_reasons`), not findings, so never read it as a scan result.
 * **Report**: `--format json` writes a top-level JSON array of findings (`[]` when clean) with absolute `file_path` values. See `finding_format.md` in the `codemender-audit` skill.
 * **State**: diff scans don't change the statuses in `state.db`. After the code is fixed and a re-scan is clean, `cm report` still lists the old findings (for example as `OPEN` or `VERIFIED`). Treat the latest diff report as the source of truth, and use its `--format sarif --output` file for a current-state SARIF.
 * **Cost**: in a small test repository, each diff scan took about 1.5 to 9 minutes (files are scanned in parallel, so the slowest file sets the pace) and 70k to 180k tokens; for a 3-file change in OWASP Juice Shop (plus 3 affected neighbors), about 5 to 6 minutes and 460k to 525k tokens. One `cm verify` took about 1.4M tokens and one `cm fix` 1.9M to 3.2M, mostly cached (cm 0.16.0).
 
-The bundled wrapper returns `0` (clean), `1` (blocking findings), or `2` (tool or environment error, or an INCOMPLETE scan, with a hint per setup exit code) and writes `.codemender/last-diff-scan.json`:
+The bundled wrapper returns `0` (clean, or a completed `--dry-run`), `1` (blocking findings), or `2` (tool, usage, or environment error, or an INCOMPLETE scan, with a hint per setup exit code) and writes `.codemender/last-diff-scan.json`:
 
 ```bash
 bash "<skill-dir>/scripts/cm_diff_scan.sh"                  # auto: the working tree with untracked files, or only the staged changes
 bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope staged   # pre-commit
 bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope branch   # against the upstream, or --base origin/main
 bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope last-commit
+bash "<skill-dir>/scripts/cm_diff_scan.sh" --dry-run        # cm 0.18.0: preview the scope, 0 tokens, never a result
 bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope branch -- --diff-max-neighbors 20 --diff-job-timeout 20m --model gemini-4-argon
 ```
 
@@ -164,7 +169,7 @@ cm find . --diff=origin/main --fail-on=CRITICAL,HIGH --fail-on-truncation --form
 | `cm verify <id> --no-reset -y` | **Tier 2**: also re-runs the exploit script after verification. |
 
 * Verification sets the status, for example to `VERIFIED` or `DISMISSED`. Since 0.17.0, an unexploitable verdict also updates the status instead of leaving the finding `OPEN` (release notes). Running `cm verify` again on a `DISMISSED` finding re-examines it and can restore it.
-* The `--architecture=3-1` example in `cm verify --help` is stale: cm 0.16.0 and 0.17.0 reject it as an unknown flag (observed).
+* The `--architecture=3-1` example in `cm verify --help` is stale: cm 0.16.0 through 0.18.0 reject it as an unknown flag (observed).
 * It finds code that moved since `cm find` and updates the finding's location.
 * Since 0.16.0 the agent writes its files only to `.exploit/` inside the project root; cm itself also appends `.exploit/` to the tracked `.gitignore`.
 * Cost: in a small test repository, one Tier 1 run took about 9 minutes and 1.4M tokens. Skip it in the inner loop, where a clean diff re-scan confirms a fix.
@@ -192,7 +197,7 @@ cm find . --diff=origin/main --fail-on=CRITICAL,HIGH --fail-on-truncation --form
 | `--model <name>` | `gemini-3.8-flash` | A stronger model (`gemini-4-argon`) for complex patches. |
 | `--no-cache` | off | Ignores cached patches and runs a fresh session, for example after a failed or unwanted patch. |
 | `--no-reset` | off | 0.17.0: skips the workspace reset before fixing. On git, model-fallback retries undo only the failed attempt's edits and keep pre-existing uncommitted and untracked files. `cm_remediate_loop.sh` passes it on 0.17.0 and later. |
-| `--export <session-id>` | none | **Not implemented in 0.16.0 or 0.17.0** (observed): it only prints `Exporting patch from session ... (not yet implemented)` and exits `0`. See generated patches with `cm report --patches` instead. |
+| `--export <session-id>` | none | **Not implemented in 0.16.0 through 0.18.0** (observed): it only prints `Exporting patch from session ... (not yet implemented)` and exits `0`. See generated patches with `cm report --patches` instead. |
 | `-y, --yes` | off | Auto-approves file writes and command prompts (otherwise each one prompts, unless turned off in `config.yaml`). |
 
 How it validates a patch: it generates a candidate, applies it to a sandboxed copy, runs `build.command`, re-runs the verified PoC, and then applies the patch to your workspace. Since 0.12.0 it won't modify CI/CD pipelines, static analysis configs, build definitions, or repository configuration files outside the finding's scope; since 0.17.0 the agent gets the finding's exact line range. Through `cm_remediate_loop.sh`, pass these flags after `--` (for example `-- --model gemini-4-argon --no-cache`).
@@ -288,7 +293,7 @@ Exit codes: `0` healthy, `10` credentials (no valid token, or `401`), `20` confi
 
 ### `cm init` and `cm init --verify`
 * `cm init` creates the CodeMender home (`$CM_HOME`, else `~/.codemender`) with `config.yaml`, `logs/`, `backups/`, `patches/`, and, since 0.17.0, a commented-out `command_policy.yaml` template; `state.db` appears on first use. Through `cm_exec.sh`, never with `-y`.
-* `cm init --verify` changes nothing and checks the workspace directory, config file, config parsing, server, server connectivity (skipped on the default transport), build command, VCS type, and state database (observed). It reports a failure when no config exists yet or the YAML doesn't parse (for example a duplicated key), and it doesn't flag unknown config keys (observed with 0.16.0 and 0.17.0): use `cm_config_check.sh` for that.
+* `cm init --verify` changes nothing and checks the workspace directory, config file, config parsing, server, server connectivity (skipped on the default transport), build command, VCS type, and state database (observed). It reports a failure when no config exists yet or the YAML doesn't parse (for example a duplicated key), and it doesn't flag unknown config keys (observed with 0.16.0 through 0.18.0): use `cm_config_check.sh` for that.
 
 ### `cm support-bundle` (0.17.0)
 Collects diagnostic data for a support case into a `.tar.gz` archive (default `./cm-support-bundle-<timestamp>.tar.gz`). Nothing is uploaded: you review the archive and attach it yourself.
@@ -317,11 +322,13 @@ Prints a shell completion script.
 | Gemini 3.8 Flash Cyber | `gemini-3.8-flash-cyber` | Allowlisted customers only (Fairwind Program). |
 | Gemini 4 Argon Cyber Permissive | `gemini-4-argon-cyber-permissive` | Allowlisted customers only (Fairwind Program). |
 | Gemini 3.7 Flash | `gemini-3.7-flash` | Retires on January 28, 2027. |
-| Gemini 3.6 Flash | `gemini-3.6-flash` | Deprecated; retires on November 19, 2026. The CLI warns when you use it (observed). |
+| Gemini 3.6 Flash | `gemini-3.6-flash` | Deprecated; retires on November 19, 2026. The CLI warns when you use it, and `cm models` (0.18.0) no longer lists it (observed). |
 | Gemini 3.5 Flash | `gemini-3.5-flash` | Older model. |
 | Gemini 3.1 Pro Preview | `gemini-3.1-pro-preview` | Preview. |
 
-Deprecated models work until their retirement date; after that, requests that use them fail. `cm find`, `cm verify`, and `cm fix` accept `--model`. The config docs also list a `model:` key; the plugin passes `--model` on the command line instead, so the model choice is explicit in every run.
+Deprecated models work until their retirement date; after that, requests that use them fail. `cm find`, `cm verify`, and `cm fix` accept `--model`. Since the 0.18.0 docs, `config.yaml` doesn't set the model: pass `--model` on the command line (the plugin always does, so the model choice is explicit in every run).
+
+`cm models` (0.18.0) lists the models that the CLI offers, marking the default and the allowlist-only ones (observed: `gemini-3.8-flash (default)`, `gemini-4-argon`, `gemini-3.7-flash`, `gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-4-argon-cyber-permissive (allowlist only)`, and `gemini-3.8-flash-cyber (allowlist only)`).
 
 ---
 
@@ -334,7 +341,7 @@ Deprecated models work until their retirement date; after that, requests that us
 | `CM_HOME` | CodeMender home directory (config, command policy, state, logs); `cm_exec.sh` sets it to `.codemender/` in the repository. |
 | `CM_TEAM_ID` | Same as `--team-id`. |
 | `CM_PLAIN` | 0.17.0: `true` or `1` turns on plain text output, `false` or `0` turns it off (same as `--plain`). |
-| `CM_TELEMETRY_OPT_OUT` | `1` or `true` turns off the anonymous CLI telemetry. |
+| `CM_TELEMETRY_OPT_OUT` | `1` or `true` turns off the CLI telemetry. Per the current setup docs, telemetry events can identify the Google Account or service account and the project, but never contain source code, file contents, file paths, prompts, findings, or patches. |
 | `CM_DISABLE_MODEL_FALLBACK` | `true` is the same as `--no-model-fallback`. |
 | `CMOC_FIND_ENABLE_BASH` | `true` is the same as `cm find --enable-bash`. |
 | `CMOC_DEEP_MAX_TURNS` | Default for `--deep-max-turns` (`0` means unlimited). |
@@ -362,7 +369,7 @@ In the CodeMender home (`$CM_HOME`; `.codemender/` in the repository with `cm_ex
 | `reports/` | HTML reports (removed by `cm clean`). |
 | `audit.log` | Log of tool calls. |
 
-In the repository: `.cm_project` (project marker; keep it out of commits), `.exploit/` (verification artifacts), and the plugin's `.codemender/last-diff-scan.json`, `.meta`, `.log`, and `remediate-scan.json`.
+In the repository: `.cm_project` (project marker; keep it out of commits), `.exploit/` (verification artifacts), and the plugin's `.codemender/last-diff-scan.json`, `.meta`, `.log`, `last-diff-scan.dry-run.json` (a `--dry-run` preview, never a result), and `remediate-scan.json`.
 
 ---
 
@@ -382,10 +389,10 @@ In the repository: `.cm_project` (project marker; keep it out of commits), `.exp
 
 | Command | Codes |
 | :--- | :--- |
-| `cm find` | `0` no blocking findings; `1` blocking findings (per `--fail-on`) **or** another error, such as an unknown flag. Check whether `--output` was written. Since 0.17.0, setup failures exit `10`, `20`, `30`, `40`, or `50` like `cm health` (observed: `20` for an invalid `config.yaml`). |
+| `cm find` | `0` no blocking findings (or a completed `--dry-run`); `1` blocking findings (per `--fail-on`) **or** another error, such as an unknown flag (for example `--diff-depth` in 0.18.0). Check whether `--output` was written. Since 0.17.0, setup failures exit `10`, `20`, `30`, `40`, or `50` like `cm health` (observed: `20` for an invalid `config.yaml`). |
 | `cm verify`, `cm fix` | Since 0.17.0, setup failures also have their own codes (release notes). `cm fix` exits `0` also when it made no edits. |
 | `cm health` | `0`, `10`, `20`, `30`, `40`, `50` (Section 9). |
-| `cm_diff_scan.sh` | `0` clean, `1` blocking findings, `2` error or INCOMPLETE scan (with a hint for exit codes `10` to `50`). |
+| `cm_diff_scan.sh` | `0` clean or a completed `--dry-run`, `1` blocking findings, `2` error (including a usage error, cm's own error line for a failed run, or a report that isn't findings) or INCOMPLETE scan (with a hint for exit codes `10` to `50`). |
 | `cm_git_hook.sh run` | `1` blocks the commit or push; scan errors don't block unless `CM_HOOK_STRICT=1`. |
 
 ---
@@ -398,6 +405,9 @@ In the repository: `.cm_project` (project marker; keep it out of commits), `.exp
 | The CLI opens an activation page and waits | The project isn't activated for CodeMender: ask the user to finish activation (never wait in a loop). |
 | `StartSession failed with HTTP 403 Forbidden` or `Permission 'aiplatform.interactions.create' denied` | Missing access: check the project, the Agent Platform API, and `roles/aiplatform.user`; run `cm health --strict`. |
 | `Error: unknown flag: --diff` | The CLI predates diff mode: update it (with consent). |
+| `Error: unknown flag: --diff-depth` | cm 0.18.0 removed it: diff scans always resolve 1 hop. Drop it; raise `--diff-max-neighbors` for more callers, and deep-scan the directories of callers farther away. |
+| `Error: if any flags in the group [dry-run validate] are set none of the others can be` | `--dry-run` and `--validate` (0.18.0) can't be combined: pick one. |
+| `✅ Dry-run complete. No files were uploaded and 0 tokens were consumed.` | A `--dry-run` preview (0.18.0), not a scan: nothing was checked. |
 | `Error: unknown flag: --unrestricted` | cm 0.17.0 removed it. Use `--sandbox=false`, `--allow-all-paths`, or `--allow-all-commands`, and only with the user's consent. |
 | `Error: loading config: parsing config: yaml: ...` (exit `20`) | `config.yaml` doesn't parse (for example a duplicated key): fix it, then run `cm_config_check.sh` and `cm_exec.sh init --verify`. |
 | `warning not acknowledged` | A non-interactive run without `--bypass-warning` (`cm_exec.sh` adds it for `verify` and `fix`). |

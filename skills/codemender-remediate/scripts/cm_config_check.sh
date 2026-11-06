@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Checks .codemender/config.yaml against the documented keys, and for invalid or risky values.
 #
-# cm (0.16.0 and 0.17.0) doesn't warn about unknown or misspelled keys (`cm init --verify` still reports "Config loaded
+# cm (0.16.0 through 0.18.0) doesn't warn about unknown or misspelled keys (`cm init --verify` still reports "Config loaded
 # successfully"), and older docs used a few names that differ from the `cm init` template. Run this script after editing
 # the config, together with `cm_exec.sh init --verify` (which catches YAML syntax errors and an invalid team_id). The
-# schema comes only from the `cm init` 0.17.0 template, the public CodeMender docs, and the release notes.
+# schema comes only from the `cm init` template (0.17.0 and 0.18.0), the public CodeMender docs, and the release notes.
 #
 # Usage: cm_config_check.sh [CONFIG_PATH]   (default: <repository root>/.codemender/config.yaml)
 # Exit codes: 0 = no problems (warnings and notes may be printed), 1 = problems found, 2 = file missing or unreadable.
@@ -31,7 +31,8 @@ import difflib, re, sys
 
 path = sys.argv[1]
 
-# Documented keys: the `cm init` 0.17.0 template, the public config docs, and the release notes (scan.include_hidden).
+# Documented keys: the `cm init` template (0.17.0 and 0.18.0), the public config docs, and the release notes
+# (scan.include_hidden).
 KNOWN = {
     "server": "any",  # template: `server: {}`; its comment says the built-in endpoint can be overridden here
     "team_id": "str",
