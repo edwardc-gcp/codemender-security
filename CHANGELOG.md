@@ -2,6 +2,26 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.6.0] - 2026-11-06
+
+Works with CodeMender CLI 0.16.0 through 0.18.0 (0.18.0 recommended).
+
+### Safety
+- With CodeMender 0.18.0 and plugin 1.5.0, a diff scan with `--dry-run` after `--` printed "No blocking findings" for a scope preview and recorded it as a clean staged scan, so the pre-commit hook skipped the real scan of those changes (observed). `cm_diff_scan.sh` now refuses `--dry-run` and the interactive `--validate` after `--`, and only a findings array counts as a result: any other report exits `2` without a `.meta` file, and a run without a report isn't recorded for reuse.
+- The pre-commit hook reuses a staged scan only when its report holds findings, so a preview that 1.5.0 recorded can't let a commit through unscanned. Run `cm_git_hook.sh install` again to update an installed hook runner.
+
+### CodeMender 0.18.0 Support
+- `cm_diff_scan.sh --depth` follows the installed CLI. 0.18.0 removed `--diff-depth` (diff scans always resolve 1 hop), so `--depth 1` is dropped and a larger depth is refused before cm runs, instead of failing with a credentials hint. Releases up to 0.17.0 still get `--diff-depth`.
+- New `cm_diff_scan.sh --dry-run` (0.18.0 or later) previews the changed files, the 1-hop neighbors, and an architecture summary at no cost, with the same scope logic as a scan (untracked files included). The preview goes to `.codemender/last-diff-scan.dry-run.json` and never replaces the findings report or its `.meta`.
+- When cm fails without a report, `cm_diff_scan.sh` shows cm's own error line (for example an unknown flag) and points at `cm find --help`.
+- The audit playbook raises `--diff-max-neighbors` (with `--fail-on-truncation`) for a widely used function that changed, instead of `--depth 2`.
+- The CLI and config references cover 0.18.0: no `--diff-depth`, `--dry-run`, `--validate`, `cm models`, new messages, no `model` key in `config.yaml`, and the current telemetry description. The import schema follows the current docs (`start_line`, `end_line`, `snippet`).
+- Observed behaviors re-checked on 0.18.0: the `cm init` template and command policy are unchanged, unknown config keys still aren't flagged, `cm fix --export` still isn't implemented, and the `--architecture` example in `cm verify --help` is still an unknown flag.
+
+### Fixes
+- `cm_diff_scan.sh` stops with a usage error when an option is missing its value (a bare `--depth` looped forever), and its help shows the whole header.
+- The README no longer says that CLI telemetry excludes identity: per the CodeMender docs, it can identify the account and project.
+
 ## [1.5.0] - 2026-11-02
 
 Works with CodeMender CLI 0.16.0 and 0.17.0 (0.17.0 recommended).
