@@ -59,7 +59,8 @@ case "${1:-}" in
     echo "cm version ${STUB_CM_VERSION:-0.16.0} (stub)"
     ;;
   find)
-    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error|config-error|incomplete; STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
+    # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error|config-error|incomplete|object-report|no-report;
+    # STUB_DIFF_SNAPSHOT records what `git diff HEAD` sees.
     # dynamic reports one HIGH finding (id f-<name>) for each of app.py / db.py that still contains UNSAFE.
     out=""
     fail_on="CRITICAL,HIGH"
@@ -108,6 +109,14 @@ case "${1:-}" in
         echo "[1/2] ❌ app.py: start session failed"
         echo "📊 PR Delta Scan Complete: 2 jobs (1 succeeded, 1 failed) in 1m0s"
         if [ -n "${out}" ]; then printf '[]\n' > "${out}"; fi
+        exit 0
+        ;;
+      object-report)
+        # Exit 0 with a JSON object instead of a findings array, like the scope preview of cm 0.18.0 --dry-run.
+        if [ -n "${out}" ]; then printf '{"project_root": "%s", "target_scope": ".", "candidate_files": ["app.py"]}\n' "$(pwd)" > "${out}"; fi
+        exit 0
+        ;;
+      no-report)
         exit 0
         ;;
       dynamic)

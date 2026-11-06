@@ -20,7 +20,8 @@
 # Flags after `--` go to `cm find` unchanged, for example --model gemini-4-argon, --diff-max-neighbors 20,
 # --diff-workers 8, --diff-job-timeout 20m, --fail-on-truncation, or --include-hidden. The script sets --diff, --staged,
 # --format, --output, --fail-on, and -y itself, and refuses flags that turn off a safety boundary (--sandbox,
-# --allow-all-paths, --allow-all-commands, and the older --unrestricted).
+# --allow-all-paths, --allow-all-commands, and the older --unrestricted), cm 0.18.0's --dry-run (its scope preview
+# isn't a findings report), and the interactive --validate.
 #
 # Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
 #             CRITICAL,HIGH; an empty value only reports), 2 = tool, usage, or environment error, or an INCOMPLETE
@@ -84,6 +85,14 @@ for arg in ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; do
       ;;
     --unrestricted|--unrestricted=*|--sandbox|--sandbox=*|--allow-all-paths|--allow-all-paths=*|--allow-all-commands|--allow-all-commands=*)
       echo "❌ ${arg} changes a CodeMender safety boundary (sandbox, path boundary, or command policy), so cm_diff_scan.sh refuses it. Only the user can approve that, for a cm_exec.sh find run." >&2
+      exit 2
+      ;;
+    --dry-run|--dry-run=*)
+      echo "❌ ${arg} makes cm 0.18.0 write a scope preview instead of findings, so cm_diff_scan.sh refuses it: a preview must never pass for a clean scan that the git hook could reuse." >&2
+      exit 2
+      ;;
+    --validate|--validate=*)
+      echo "❌ ${arg} asks you questions interactively, and cm_diff_scan.sh runs cm non-interactively, so it refuses it. Run it yourself in a terminal: bash \"${CM_EXEC}\" find . --validate" >&2
       exit 2
       ;;
   esac
@@ -367,6 +376,25 @@ PY
   fi
 }
 
+# A findings report is a JSON array (an object with a "findings" array also counts). Anything else, such as the scope
+# preview that cm 0.18.0 writes for --dry-run, or a file that doesn't parse, means that nothing was verified.
+report_is_findings() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$1" 2>/dev/null <<'PY'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(data, list) or (isinstance(data, dict) and isinstance(data.get("findings"), list)) else 1)
+PY
+  elif command -v jq >/dev/null 2>&1; then
+    jq -e 'type == "array" or (type == "object" and (.findings | type) == "array")' "$1" >/dev/null 2>&1
+  else
+    return 0
+  fi
+}
+
 if [ "${RC}" -eq 0 ] && [ "${INCOMPLETE}" = true ]; then
   summarize
   echo "❌ INCOMPLETE scan: ${FAILED_JOBS} file job(s) failed (the ❌ lines above), so a clean result doesn't cover every changed file. Re-run the scan; if a large file keeps timing out, pass -- --diff-job-timeout 20m, or check: bash \"${CM_EXEC}\" health --strict" >&2
@@ -374,6 +402,15 @@ if [ "${RC}" -eq 0 ] && [ "${INCOMPLETE}" = true ]; then
 fi
 
 if [ "${RC}" -eq 0 ] || { [ "${RC}" -eq 1 ] && [ -s "${REPORT}" ]; }; then
+  # Only a findings report may count as a result (and be recorded in the .meta file that the git hook reuses).
+  if [ -s "${REPORT}" ] && ! report_is_findings "${REPORT}"; then
+    echo "❌ cm find exited ${RC}, but ${REPORT} isn't a findings report (a JSON array), so nothing was verified and no .meta was written. Check the flags after --." >&2
+    exit 2
+  fi
+  if [ ! -s "${REPORT}" ]; then
+    echo "✅ cm reported no blocking findings in the ${SCOPE} scope (--fail-on=${FAIL_ON:-<report only>}), but it wrote no report, so the git hook won't reuse this result."
+    exit 0
+  fi
   summarize
   write_meta "${RC}"
   if [ "${RC}" -eq 0 ]; then

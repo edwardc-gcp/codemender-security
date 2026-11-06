@@ -133,7 +133,7 @@ find_call | grep -q -- "--diff=${BASE_SHA}" || fail "branch: expected --diff=<me
 STUB_FIND_MODE=clean scan --scope last-commit -- --model gemini-4-argon --diff-max-neighbors 20 --fail-on-truncation
 [ "${RC}" -eq 0 ] || fail "passthrough: expected exit 0, got ${RC}: ${OUT}"
 find_call | grep -q -- '--model gemini-4-argon --diff-max-neighbors 20 --fail-on-truncation' || fail "passthrough: extra flags missing: $(find_call)"
-for refused in --output=x.json --staged --unrestricted --sandbox=false --allow-all-paths --allow-all-commands=true -y; do
+for refused in --output=x.json --staged --unrestricted --sandbox=false --allow-all-paths --allow-all-commands=true -y --dry-run --validate; do
   : > "${STUB_LOG}"
   scan --scope last-commit -- "${refused}"
   [ "${RC}" -eq 2 ] || fail "passthrough: ${refused} should be refused with exit 2, got ${RC}"
@@ -203,4 +203,27 @@ printf '%s\n' "${OUT}" | grep -q 'removed --diff-depth' || fail "unknown flag: m
 printf '%s\n' "${OUT}" | grep -q 'find --help' || fail "unknown flag: missing find --help pointer: ${OUT}"
 [ ! -e .codemender/last-diff-scan.meta ] || fail "unknown flag: no meta file should be written"
 
-echo "✅ cm_diff_scan.sh tests passed (15 scenarios with stub cm)"
+# 16. cm 0.18.0's --dry-run and the interactive --validate never reach cm through this script: a scope preview must not
+#     pass for a clean scan.
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.18.0 scan -- --dry-run
+[ "${RC}" -eq 2 ] || fail "dry-run passthrough: expected exit 2, got ${RC}"
+printf '%s\n' "${OUT}" | grep -q 'scope preview' || fail "dry-run passthrough: missing explanation: ${OUT}"
+[ -z "$(find_call)" ] || fail "dry-run passthrough: cm should not run"
+
+# 17. cm exits 0 but writes something other than a findings array (here a scope-preview object): nothing was verified,
+#     so exit 2 and no reusable meta.
+rm -f .codemender/last-diff-scan.meta
+STUB_FIND_MODE=object-report scan
+[ "${RC}" -eq 2 ] || fail "object report: expected exit 2, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q "isn't a findings report" || fail "object report: missing explanation: ${OUT}"
+! printf '%s\n' "${OUT}" | grep -q 'No blocking findings' || fail "object report: must not claim a clean result: ${OUT}"
+[ ! -e .codemender/last-diff-scan.meta ] || fail "object report: no meta file should be written"
+
+# 18. cm exits 0 without writing a report: cm's verdict is reported, but nothing is recorded for the git hook to reuse.
+STUB_FIND_MODE=no-report scan
+[ "${RC}" -eq 0 ] || fail "no report: expected exit 0, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'wrote no report' || fail "no report: missing note: ${OUT}"
+[ ! -e .codemender/last-diff-scan.meta ] || fail "no report: no meta file should be written"
+
+echo "✅ cm_diff_scan.sh tests passed (18 scenarios with stub cm)"
