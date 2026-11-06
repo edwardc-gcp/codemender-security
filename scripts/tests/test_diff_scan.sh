@@ -164,4 +164,43 @@ for opt in --depth --scope --fail-on -c; do
   printf '%s\n' "${OUT}" | grep -q -- "${opt} needs a value" || fail "missing value: no message for ${opt}: ${OUT}"
 done
 
-echo "✅ cm_diff_scan.sh tests passed (13 scenarios with stub cm)"
+# 14. --depth follows the installed cm: passed as --diff-depth up to cm 0.17.0; with cm 0.18.0 (which removed that flag),
+#     --depth 1 is dropped and a larger depth is refused without calling cm, so a narrower scan never looks clean.
+new_repo depth
+printf 'print("changed")\n' > main.py
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.17.0 STUB_FIND_MODE=clean scan --depth 2
+[ "${RC}" -eq 0 ] || fail "depth 0.17.0: expected exit 0, got ${RC}: ${OUT}"
+find_call | grep -q -- '--diff-depth 2' || fail "depth 0.17.0: expected --diff-depth 2: $(find_call)"
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=clean scan --depth 1
+[ "${RC}" -eq 0 ] || fail "depth 1 on 0.18.0: expected exit 0, got ${RC}: ${OUT}"
+[ -n "$(find_call)" ] || fail "depth 1 on 0.18.0: the scan should run"
+! find_call | grep -q -- '--diff-depth' || fail "depth 1 on 0.18.0: --diff-depth must not reach cm: $(find_call)"
+printf '%s\n' "${OUT}" | grep -q -- '--depth 1 is already its behavior' || fail "depth 1 on 0.18.0: missing note: ${OUT}"
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=clean scan --depth 2
+[ "${RC}" -eq 2 ] || fail "depth 2 on 0.18.0: expected exit 2, got ${RC}: ${OUT}"
+[ -z "$(find_call)" ] || fail "depth 2 on 0.18.0: cm should not run"
+printf '%s\n' "${OUT}" | grep -q 'removed --diff-depth' || fail "depth 2 on 0.18.0: missing explanation: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q -- '--diff-max-neighbors' || fail "depth 2 on 0.18.0: missing alternative: ${OUT}"
+git status --porcelain | grep -qx ' M main.py' || fail "depth 2 on 0.18.0: the working tree should be unchanged"
+for bad in abc 0 1.5; do
+  : > "${STUB_LOG}"
+  scan --depth "${bad}"
+  [ "${RC}" -eq 2 ] || fail "depth ${bad}: expected exit 2, got ${RC}"
+  [ -z "$(find_call)" ] || fail "depth ${bad}: cm should not run"
+done
+
+# 15. A flag that the installed cm rejects (cm 0.18.0 and --diff-depth after --) is a tool error: exit 2 with cm's own
+#     error line and a pointer to `cm find --help`, not the credentials hint.
+: > "${STUB_LOG}"
+rm -f .codemender/last-diff-scan.meta
+STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=clean scan -- --diff-depth 2
+[ "${RC}" -eq 2 ] || fail "unknown flag: expected exit 2, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'cm said: unknown flag: --diff-depth' || fail "unknown flag: missing cm error line: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'removed --diff-depth' || fail "unknown flag: missing removal note: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'find --help' || fail "unknown flag: missing find --help pointer: ${OUT}"
+[ ! -e .codemender/last-diff-scan.meta ] || fail "unknown flag: no meta file should be written"
+
+echo "✅ cm_diff_scan.sh tests passed (15 scenarios with stub cm)"

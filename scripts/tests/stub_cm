@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
 #   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail|by-id|ineffective   behavior of `cm fix` (default: patch)
-#   STUB_CM_VERSION=<x.y.z>                       version that `cm --version` reports (default: 0.16.0)
+#   STUB_CM_VERSION=<x.y.z>                       version that `cm --version` reports (default: 0.16.0); from 0.18.0,
+#                                                 `cm find` rejects --diff-depth like the real CLI
 #   STUB_LOG=<file>                              append every invocation's arguments to this file
 if [ -n "${STUB_LOG:-}" ]; then
   printf '%s\n' "$*" >> "${STUB_LOG}"
 fi
+
+# stub_version_ge X: true when STUB_CM_VERSION is at least X.
+stub_version_ge() {
+  [ "$(printf '%s\n%s\n' "$1" "${STUB_CM_VERSION:-0.16.0}" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$1" ]
+}
 
 case "${1:-}" in
   report)
@@ -64,6 +70,13 @@ case "${1:-}" in
       fi
       case "${arg}" in
         --fail-on=*) fail_on="${arg#--fail-on=}" ;;
+        --diff-depth|--diff-depth=*)
+          # cm 0.18.0 removed --diff-depth (observed: "Error: unknown flag: --diff-depth", exit 1, before any work).
+          if stub_version_ge 0.18.0; then
+            echo "Error: unknown flag: --diff-depth" >&2
+            exit 1
+          fi
+          ;;
       esac
       prev="${arg}"
     done

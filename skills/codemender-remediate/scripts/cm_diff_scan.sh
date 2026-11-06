@@ -13,16 +13,20 @@
 #   auto         (default) working if there are unstaged or untracked source changes, else staged if something is
 #                staged, else branch if the branch is ahead of its upstream, else nothing to scan
 #
+# --depth N      impact depth in hops (`--diff-depth`), for cm 0.17.0 and earlier. cm 0.18.0 removed that flag: its diff
+#                scans always resolve 1 hop, so there --depth 1 changes nothing, and a larger value is refused rather
+#                than letting a narrower scan look clean.
+#
 # Flags after `--` go to `cm find` unchanged, for example --model gemini-4-argon, --diff-max-neighbors 20,
 # --diff-workers 8, --diff-job-timeout 20m, --fail-on-truncation, or --include-hidden. The script sets --diff, --staged,
 # --format, --output, --fail-on, and -y itself, and refuses flags that turn off a safety boundary (--sandbox,
 # --allow-all-paths, --allow-all-commands, and the older --unrestricted).
 #
 # Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
-#             CRITICAL,HIGH; an empty value only reports), 2 = tool or environment error, or an INCOMPLETE scan
-#             (a file job failed, so a clean result doesn't cover every changed file). Since cm 0.17.0, setup failures
-#             have their own cm exit codes (10 credentials, 20 config, 30 reachability, 40 authorization, 50 timeout);
-#             they also exit 2, with a hint for that layer.
+#             CRITICAL,HIGH; an empty value only reports), 2 = tool, usage, or environment error, or an INCOMPLETE
+#             scan (a file job failed, so a clean result doesn't cover every changed file). Since cm 0.17.0, setup
+#             failures have their own cm exit codes (10 credentials, 20 config, 30 reachability, 40 authorization,
+#             50 timeout); they also exit 2, with a hint for that layer.
 # The JSON report is written to --output (default: .codemender/last-diff-scan.json) with a .meta file next to it.
 
 set -uo pipefail
@@ -66,6 +70,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ -n "${DEPTH}" ]; then
+  case "${DEPTH}" in
+    *[!0-9]*|0*) echo "❌ --depth needs a whole number of hops (1 or more), not: ${DEPTH}" >&2; exit 2 ;;
+  esac
+fi
+
 for arg in ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; do
   case "${arg}" in
     --diff|--diff=*|--staged|--quick|--deep|--format|--format=*|--output|--output=*|--fail-on|--fail-on=*|-y|--yes)
@@ -105,8 +115,27 @@ if ! git rev-parse --verify -q HEAD >/dev/null; then
   echo "❌ The repository has no commits yet, so there is nothing to diff against. Use: bash \"${CM_EXEC}\" find . --quick -y" >&2
   exit 2
 fi
-# Let the wrapper register CodeMender's runtime paths (.codemender/, ...) in .git/info/exclude before writing reports.
-bash "${CM_EXEC}" --version >/dev/null 2>&1 || true
+# Let the wrapper register CodeMender's runtime paths (.codemender/, ...) in .git/info/exclude before writing reports,
+# and read the cm version for the flags that changed between releases.
+CM_VERSION="$(bash "${CM_EXEC}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)"
+
+# version_ge A B: true when version A (MAJOR.MINOR.PATCH) is at least B.
+version_ge() {
+  [ -n "$1" ] || return 1
+  [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$2" ]
+}
+
+# cm 0.18.0 removed --diff-depth: its diff scans always resolve 1 hop. A deeper request can't be honored, and a narrower
+# scan must not look like the clean result that was asked for, so stop instead.
+if [ -n "${DEPTH}" ] && version_ge "${CM_VERSION}" 0.18.0; then
+  if [ "${DEPTH}" = "1" ]; then
+    echo "ℹ️  cm ${CM_VERSION} always resolves 1-hop impact, so --depth 1 is already its behavior (not passed to cm)."
+    DEPTH=""
+  else
+    echo "❌ --depth ${DEPTH} needs cm 0.17.0 or earlier: cm ${CM_VERSION} removed --diff-depth, and its diff scans resolve only 1-hop callers. To cover more of the change's impact, pass -- --diff-max-neighbors 20 --fail-on-truncation; for callers farther away, ask the user before a deep scan of their directories: bash \"${CM_EXEC}\" find <dir> -y" >&2
+    exit 2
+  fi
+fi
 
 STATE_DIR="${PROJECT_ROOT}/.codemender"
 ITA_RECORD="${STATE_DIR}/.diff_scan_intent_to_add"
@@ -358,14 +387,31 @@ if [ "${RC}" -eq 0 ] || { [ "${RC}" -eq 1 ] && [ -s "${REPORT}" ]; }; then
   exit "${RC}"
 fi
 
-# cm 0.17.0+ exits with the failing setup layer's code (the same codes as `cm health`).
+# cm 0.17.0+ exits with the failing setup layer's code (the same codes as `cm health`). Other failures, such as a flag
+# that this cm release doesn't know, exit 1 without a report: show cm's own error line for those.
+CM_ERROR="$(sed -n 's/^Error: //p' "${SCAN_LOG}" 2>/dev/null | head -n 1)"
+DETAILS="bash \"${CM_EXEC}\" health --strict"
 case "${RC}" in
   10) HINT="credentials: run 'gcloud auth application-default login' and set GOOGLE_CLOUD_PROJECT" ;;
   20) HINT="configuration: fix .codemender/config.yaml, then run cm_config_check.sh and cm_exec.sh init --verify" ;;
   30) HINT="reachability: check network access to the CodeMender endpoint (proxy, DNS, VPC Service Controls)" ;;
   40) HINT="authorization: the caller needs the Agent Platform User role (roles/aiplatform.user) on a project with CodeMender access" ;;
   50) HINT="timeout: check the network and retry" ;;
-  *) HINT="check credentials and connectivity" ;;
+  *)
+    if [ -n "${CM_ERROR}" ]; then
+      HINT="cm said: ${CM_ERROR}"
+    else
+      HINT="check credentials and connectivity"
+    fi
+    case "${CM_ERROR}" in
+      *"unknown flag: --diff-depth"*)
+        HINT="${HINT}; cm 0.18.0 removed --diff-depth (diff scans always resolve 1 hop), so drop it" ;;
+    esac
+    case "${CM_ERROR}" in
+      *"unknown flag"*|*"unknown shorthand flag"*|*"flags in the group"*|*"invalid argument"*)
+        DETAILS="bash \"${CM_EXEC}\" find --help" ;;
+    esac
+    ;;
 esac
-echo "❌ cm find --diff failed (exit ${RC}) without producing a report (${HINT}). Details: bash \"${CM_EXEC}\" health --strict" >&2
+echo "❌ cm find --diff failed (exit ${RC}) without producing a report (${HINT}). Details: ${DETAILS}" >&2
 exit 2
