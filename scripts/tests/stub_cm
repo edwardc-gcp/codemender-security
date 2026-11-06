@@ -2,7 +2,7 @@
 # Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
 #   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail|by-id|ineffective   behavior of `cm fix` (default: patch)
 #   STUB_CM_VERSION=<x.y.z>                       version that `cm --version` reports (default: 0.16.0); from 0.18.0,
-#                                                 `cm find` rejects --diff-depth like the real CLI
+#                                                 `cm find` rejects --diff-depth and accepts --dry-run, like the real CLI
 #   STUB_LOG=<file>                              append every invocation's arguments to this file
 if [ -n "${STUB_LOG:-}" ]; then
   printf '%s\n' "$*" >> "${STUB_LOG}"
@@ -78,11 +78,24 @@ case "${1:-}" in
             exit 1
           fi
           ;;
+        --dry-run)
+          # cm 0.18.0 added --dry-run: a scope preview object goes to --output, 0 tokens, exit 0 (observed).
+          if ! stub_version_ge 0.18.0; then
+            echo "Error: unknown flag: --dry-run" >&2
+            exit 1
+          fi
+          dry_run=true
+          ;;
       esac
       prev="${arg}"
     done
     if [ -n "${STUB_DIFF_SNAPSHOT:-}" ]; then
       git diff --name-only HEAD > "${STUB_DIFF_SNAPSHOT}"
+    fi
+    if [ "${dry_run:-false}" = true ]; then
+      if [ -n "${out}" ]; then printf '{"project_root": "%s", "target_scope": ".", "total_files": 1, "candidate_files": 1}\n' "$(pwd)" > "${out}"; fi
+      echo "✅ Dry-run complete. No files were uploaded and 0 tokens were consumed."
+      exit 0
     fi
     case "${STUB_FIND_MODE:-clean}" in
       clean)
@@ -113,7 +126,7 @@ case "${1:-}" in
         ;;
       object-report)
         # Exit 0 with a JSON object instead of a findings array, like the scope preview of cm 0.18.0 --dry-run.
-        if [ -n "${out}" ]; then printf '{"project_root": "%s", "target_scope": ".", "candidate_files": ["app.py"]}\n' "$(pwd)" > "${out}"; fi
+        if [ -n "${out}" ]; then printf '{"project_root": "%s", "target_scope": ".", "total_files": 1, "candidate_files": 1}\n' "$(pwd)" > "${out}"; fi
         exit 0
         ;;
       no-report)

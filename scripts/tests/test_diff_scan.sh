@@ -226,4 +226,38 @@ STUB_FIND_MODE=no-report scan
 printf '%s\n' "${OUT}" | grep -q 'wrote no report' || fail "no report: missing note: ${OUT}"
 [ ! -e .codemender/last-diff-scan.meta ] || fail "no report: no meta file should be written"
 
-echo "✅ cm_diff_scan.sh tests passed (18 scenarios with stub cm)"
+# 19. --dry-run (cm 0.18.0) previews the scope without touching the findings report or its .meta: the preview goes to
+#     last-diff-scan.dry-run.json, and exit 0 means "previewed", not "clean".
+new_repo dryrun
+printf 'print("staged")\n' > main.py
+git add main.py
+STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=clean scan --scope staged
+[ "${RC}" -eq 0 ] || fail "dry-run setup: expected exit 0, got ${RC}: ${OUT}"
+cp .codemender/last-diff-scan.json "${WORK}/report.before"
+cp .codemender/last-diff-scan.meta "${WORK}/meta.before"
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=findings scan --scope staged --dry-run
+[ "${RC}" -eq 0 ] || fail "dry-run: expected exit 0, got ${RC}: ${OUT}"
+find_call | grep -q -- '--diff --staged' || fail "dry-run: expected the staged scope: $(find_call)"
+find_call | grep -q -- '--dry-run' || fail "dry-run: expected --dry-run: $(find_call)"
+printf '%s\n' "${OUT}" | grep -q 'Dry run only' || fail "dry-run: missing dry-run note: ${OUT}"
+! printf '%s\n' "${OUT}" | grep -q 'No blocking findings' || fail "dry-run: must not claim a clean result: ${OUT}"
+cmp -s "${WORK}/report.before" .codemender/last-diff-scan.json || fail "dry-run: the findings report must stay untouched"
+cmp -s "${WORK}/meta.before" .codemender/last-diff-scan.meta || fail "dry-run: the .meta file must stay untouched"
+grep -q '"project_root"' .codemender/last-diff-scan.dry-run.json || fail "dry-run: preview file missing"
+
+# 20. A working-scope dry run sees untracked files too, and restores them afterwards.
+echo 'query = "UNSAFE"' > app.py
+STUB_CM_VERSION=0.18.0 scan --dry-run
+[ "${RC}" -eq 0 ] || fail "dry-run working: expected exit 0, got ${RC}: ${OUT}"
+grep -qx 'app.py' "${STUB_DIFF_SNAPSHOT}" || fail "dry-run working: the untracked app.py was not in the preview"
+git status --porcelain | grep -qx '?? app.py' || fail "dry-run working: app.py should be untracked again"
+
+# 21. --dry-run needs cm 0.18.0 or later.
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.17.0 scan --dry-run
+[ "${RC}" -eq 2 ] || fail "dry-run on 0.17.0: expected exit 2, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'needs cm 0.18.0' || fail "dry-run on 0.17.0: missing explanation: ${OUT}"
+[ -z "$(find_call)" ] || fail "dry-run on 0.17.0: cm should not run"
+
+echo "✅ cm_diff_scan.sh tests passed (21 scenarios with stub cm)"

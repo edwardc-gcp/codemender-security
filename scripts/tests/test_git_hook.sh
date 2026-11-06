@@ -168,7 +168,7 @@ bash "${HOOK_SCRIPT}" install > /dev/null
 echo 'query = "UNSAFE"' > app.py
 git add app.py
 mkdir -p .codemender
-printf '{"project_root": "%s", "target_scope": ".", "candidate_files": ["app.py"]}\n' "$(pwd)" > .codemender/last-diff-scan.json
+printf '{"project_root": "%s", "target_scope": ".", "total_files": 1, "candidate_files": 1}\n' "$(pwd)" > .codemender/last-diff-scan.json
 printf 'scope=staged\npath=.\nbase=HEAD\nhead=%s\ntree=%s\nfail_on=CRITICAL,HIGH\nexit_code=0\ncreated_at=2026-11-06T00:00:00Z\n' \
   "$(git rev-parse HEAD)" "$(git write-tree)" > .codemender/last-diff-scan.meta
 : > "${STUB_LOG}"
@@ -177,4 +177,16 @@ STUB_FIND_MODE=findings capture git commit -qm "preview meta"
 [ "$(find_calls)" -eq 1 ] || fail "preview meta: expected one scan, got $(find_calls)"
 ! printf '%s\n' "${OUT}" | grep -q 'already passed a diff scan' || fail "preview meta: must not report a reused pass: ${OUT}"
 
-echo "✅ cm_git_hook.sh tests passed (12 scenarios with stub cm: install, block, reuse, fail-open, foreign hooks, pre-push, preview meta)"
+# 13. A dry run of the staged changes (cm_diff_scan.sh --dry-run with cm 0.18.0) doesn't count as a scan: the hook still
+#     scans those changes when they're committed.
+new_repo dry_run_then_commit
+bash "${HOOK_SCRIPT}" install > /dev/null
+echo 'query = "UNSAFE"' > app.py
+git add app.py
+STUB_CM_VERSION=0.18.0 bash "${SCAN}" --scope staged --dry-run > /dev/null
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=findings capture git commit -qm "after a dry run"
+[ "${RC}" -ne 0 ] || fail "dry run then commit: the hook must scan the staged changes: ${OUT}"
+[ "$(find_calls)" -eq 1 ] || fail "dry run then commit: expected one scan, got $(find_calls)"
+
+echo "✅ cm_git_hook.sh tests passed (13 scenarios with stub cm: install, block, reuse, fail-open, foreign hooks, pre-push, preview meta, dry run)"

@@ -2,7 +2,8 @@
 # Scans local changes with CodeMender diff mode (`cm find --diff`): the Secure Inner Loop scanner and git hook entry point.
 #
 # Usage: cm_diff_scan.sh [--scope auto|working|staged|branch|last-commit] [--base REF] [--path PATH]
-#                        [--fail-on SEVERITIES] [--depth N] [--output FILE] [-c CONTEXT] [-- CM_FIND_FLAGS...]
+#                        [--fail-on SEVERITIES] [--depth N] [--dry-run] [--output FILE] [-c CONTEXT]
+#                        [-- CM_FIND_FLAGS...]
 #
 # Scopes:
 #   working      uncommitted changes to tracked files (vs HEAD) plus untracked source files; `cm find --diff` ignores
@@ -16,18 +17,22 @@
 # --depth N      impact depth in hops (`--diff-depth`), for cm 0.17.0 and earlier. cm 0.18.0 removed that flag: its diff
 #                scans always resolve 1 hop, so there --depth 1 changes nothing, and a larger value is refused rather
 #                than letting a narrower scan look clean.
+# --dry-run      cm 0.18.0 and later: preview what the scan would cover (changed files, 1-hop neighbors, and an
+#                architecture summary) without a scan session or tokens. The preview goes to
+#                .codemender/last-diff-scan.dry-run.json (or --output); the findings report and the .meta file that the
+#                git hook reuses stay untouched.
 #
 # Flags after `--` go to `cm find` unchanged, for example --model gemini-4-argon, --diff-max-neighbors 20,
 # --diff-workers 8, --diff-job-timeout 20m, --fail-on-truncation, or --include-hidden. The script sets --diff, --staged,
 # --format, --output, --fail-on, and -y itself, and refuses flags that turn off a safety boundary (--sandbox,
-# --allow-all-paths, --allow-all-commands, and the older --unrestricted), cm 0.18.0's --dry-run (its scope preview
-# isn't a findings report), and the interactive --validate.
+# --allow-all-paths, --allow-all-commands, and the older --unrestricted), cm 0.18.0's --dry-run (use the option above:
+# the scope preview isn't a findings report), and the interactive --validate.
 #
-# Exit codes: 0 = no blocking findings or nothing to scan, 1 = blocking findings (per --fail-on, default
-#             CRITICAL,HIGH; an empty value only reports), 2 = tool, usage, or environment error, or an INCOMPLETE
-#             scan (a file job failed, so a clean result doesn't cover every changed file). Since cm 0.17.0, setup
-#             failures have their own cm exit codes (10 credentials, 20 config, 30 reachability, 40 authorization,
-#             50 timeout); they also exit 2, with a hint for that layer.
+# Exit codes: 0 = no blocking findings, nothing to scan, or a completed --dry-run, 1 = blocking findings (per
+#             --fail-on, default CRITICAL,HIGH; an empty value only reports), 2 = tool, usage, or environment error,
+#             or an INCOMPLETE scan (a file job failed, so a clean result doesn't cover every changed file). Since cm
+#             0.17.0, setup failures have their own cm exit codes (10 credentials, 20 config, 30 reachability,
+#             40 authorization, 50 timeout); they also exit 2, with a hint for that layer.
 # The JSON report is written to --output (default: .codemender/last-diff-scan.json) with a .meta file next to it.
 
 set -uo pipefail
@@ -40,6 +45,7 @@ BASE=""
 TARGET_PATH="."
 FAIL_ON="CRITICAL,HIGH"
 DEPTH=""
+DRY_RUN=false
 OUTPUT=""
 CONTEXT=""
 EXTRA_ARGS=()
@@ -63,6 +69,7 @@ while [ $# -gt 0 ]; do
     --path) need_value "$1" $#; TARGET_PATH="$2"; shift 2 ;;
     --fail-on) need_value "$1" $#; FAIL_ON="$2"; shift 2 ;;
     --depth) need_value "$1" $#; DEPTH="$2"; shift 2 ;;
+    --dry-run) DRY_RUN=true; shift ;;
     --output) need_value "$1" $#; OUTPUT="$2"; shift 2 ;;
     -c|--context) need_value "$1" $#; CONTEXT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -88,7 +95,7 @@ for arg in ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; do
       exit 2
       ;;
     --dry-run|--dry-run=*)
-      echo "❌ ${arg} makes cm 0.18.0 write a scope preview instead of findings, so cm_diff_scan.sh refuses it: a preview must never pass for a clean scan that the git hook could reuse." >&2
+      echo "❌ ${arg} makes cm 0.18.0 write a scope preview instead of findings, so cm_diff_scan.sh refuses it after --: a preview must never pass for a clean scan that the git hook could reuse. Use cm_diff_scan.sh --dry-run instead, which keeps the preview apart." >&2
       exit 2
       ;;
     --validate|--validate=*)
@@ -145,10 +152,21 @@ if [ -n "${DEPTH}" ] && version_ge "${CM_VERSION}" 0.18.0; then
     exit 2
   fi
 fi
+if [ "${DRY_RUN}" = true ] && ! version_ge "${CM_VERSION}" 0.18.0; then
+  echo "❌ --dry-run needs cm 0.18.0 or later (installed: ${CM_VERSION:-unknown})." >&2
+  exit 2
+fi
 
 STATE_DIR="${PROJECT_ROOT}/.codemender"
 ITA_RECORD="${STATE_DIR}/.diff_scan_intent_to_add"
-REPORT="${OUTPUT:-${STATE_DIR}/last-diff-scan.json}"
+# A dry run writes its scope preview (and log) apart from the findings report, so it can't replace a scan result.
+if [ "${DRY_RUN}" = true ]; then
+  REPORT="${OUTPUT:-${STATE_DIR}/last-diff-scan.dry-run.json}"
+  SCAN_LOG="${STATE_DIR}/last-diff-scan.dry-run.log"
+else
+  REPORT="${OUTPUT:-${STATE_DIR}/last-diff-scan.json}"
+  SCAN_LOG="${STATE_DIR}/last-diff-scan.log"
+fi
 
 # Restore untracked files that an earlier (or this) run registered with `git add -N`, unless the user has since staged them.
 undo_intent_to_add() {
@@ -260,6 +278,10 @@ if [ ! -d "${TARGET_ABS}" ]; then
 fi
 write_meta() {
   local tree=""
+  # A dry run scans nothing, so it never leaves a result for the git hook to reuse.
+  if [ "${DRY_RUN}" = true ]; then
+    return 0
+  fi
   if [ "${SCOPE}" = "staged" ]; then
     tree="$(git write-tree 2>/dev/null || true)"
   fi
@@ -315,13 +337,20 @@ fi
 if [ -n "${CONTEXT}" ]; then
   CM_ARGS+=(-c "${CONTEXT}")
 fi
+if [ "${DRY_RUN}" = true ]; then
+  CM_ARGS+=(--dry-run)
+fi
 CM_ARGS+=(${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"})
 
 rm -f "${REPORT}"
-SCAN_LOG="${STATE_DIR}/last-diff-scan.log"
 mkdir -p "${STATE_DIR}"
 bash "${CM_EXEC}" "${CM_ARGS[@]}" 2>&1 | tee "${SCAN_LOG}"
 RC=${PIPESTATUS[0]}
+
+if [ "${DRY_RUN}" = true ] && [ "${RC}" -eq 0 ]; then
+  echo "ℹ️  Dry run only: nothing was scanned and no tokens were used, so this isn't a security result. Preview: ${REPORT} (the findings report and its .meta file were left untouched)."
+  exit 0
+fi
 
 # cm 0.16 marks multi-file scans INCOMPLETE when a file job fails ("N succeeded, M failed"); a clean result then
 # doesn't cover every changed file.
