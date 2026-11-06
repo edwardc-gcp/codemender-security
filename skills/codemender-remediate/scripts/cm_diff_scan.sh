@@ -39,17 +39,27 @@ OUTPUT=""
 CONTEXT=""
 EXTRA_ARGS=()
 
-usage() { sed -n '2,26p' "$0" | sed -E 's/^# ?//'; }
+# Prints the header comment (from line 2 up to the first line that isn't a comment).
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
+
+# Options that take a value stop with a usage error when it's missing (instead of looping forever on `shift 2`).
+need_value() {
+  if [ "$2" -lt 2 ]; then
+    echo "❌ $1 needs a value." >&2
+    usage >&2
+    exit 2
+  fi
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --scope) SCOPE="${2:-}"; shift 2 ;;
-    --base) BASE="${2:-}"; shift 2 ;;
-    --path) TARGET_PATH="${2:-}"; shift 2 ;;
-    --fail-on) FAIL_ON="${2-}"; shift 2 ;;
-    --depth) DEPTH="${2:-}"; shift 2 ;;
-    --output) OUTPUT="${2:-}"; shift 2 ;;
-    -c|--context) CONTEXT="${2:-}"; shift 2 ;;
+    --scope) need_value "$1" $#; SCOPE="$2"; shift 2 ;;
+    --base) need_value "$1" $#; BASE="$2"; shift 2 ;;
+    --path) need_value "$1" $#; TARGET_PATH="$2"; shift 2 ;;
+    --fail-on) need_value "$1" $#; FAIL_ON="$2"; shift 2 ;;
+    --depth) need_value "$1" $#; DEPTH="$2"; shift 2 ;;
+    --output) need_value "$1" $#; OUTPUT="$2"; shift 2 ;;
+    -c|--context) need_value "$1" $#; CONTEXT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --) shift; EXTRA_ARGS=("$@"); break ;;
     *) echo "❌ Unknown argument: $1" >&2; usage >&2; exit 2 ;;

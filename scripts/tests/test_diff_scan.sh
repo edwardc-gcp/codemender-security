@@ -154,4 +154,14 @@ STUB_FIND_MODE=config-error scan --scope last-commit
 printf '%s\n' "${OUT}" | grep -q 'exit 20.*configuration' || fail "config-error: missing configuration hint: ${OUT}"
 bash "${SCAN}" --help | tail -n 1 | grep -q 'The JSON report is written' || fail "usage: --help should end with the report line"
 
-echo "✅ cm_diff_scan.sh tests passed (12 scenarios with stub cm)"
+# 13. An option without its value is a usage error (exit 2) instead of an endless loop.
+for opt in --depth --scope --fail-on -c; do
+  set +e
+  OUT="$(timeout 10 bash "${SCAN}" "${opt}" 2>&1)"
+  RC=$?
+  set -e
+  [ "${RC}" -eq 2 ] || fail "missing value: ${opt} without a value should exit 2, got ${RC}"
+  printf '%s\n' "${OUT}" | grep -q -- "${opt} needs a value" || fail "missing value: no message for ${opt}: ${OUT}"
+done
+
+echo "✅ cm_diff_scan.sh tests passed (13 scenarios with stub cm)"
