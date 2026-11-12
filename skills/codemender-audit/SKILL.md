@@ -37,8 +37,9 @@ bash "<skill-dir>/scripts/cm_exec.sh" init --verify
 
 * **Build & Sandbox Configuration**: Inspect `.codemender/config.yaml` (see [references/config_schema.md](references/config_schema.md)).
   * Dynamically verify `command -v pytest` / `node` / `python3` before setting `build.command`, and anchor it to the repository root (`cd "$(git rev-parse --show-toplevel)" && ...`): `cm fix` runs it from the finding's directory.
-  * If `exebox` (`sandbox-exec`) blocks local network sockets during builds, set `sandbox.network.profile: "permissive-open"`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`), set `build.command: "true"` for scanning and enforce outer-shell verification during remediation.
+  * If `exebox` (`sandbox-exec`) blocks local network sockets during builds, set `sandbox.network.profile: "permissive-open"`. If `exebox` blocks host toolchain paths (`~/.nvm`, `/opt/homebrew`, `/usr/local`; before cm 0.21.0, which mounts host toolchains read-only), set `build.command: "true"` for scanning and enforce outer-shell verification during remediation.
   * cm 0.17.0 also hides common credential directories and secret-like environment variables (`*_TOKEN`, `*_KEY`, ...) from sandboxed commands, keeps `.git/hooks`, `.git/config`, and `.codemender` read-only, and applies `.codemender/command_policy.yaml` (a commented template that `cm init` creates). A build that needs a hidden credential fails in the sandbox: rely on the outer build gate.
+  * On cm 0.21.0 and later, check a new or changed `build.command` in the sandbox, without model tokens: `bash "<skill-dir>/scripts/cm_exec.sh" build --force`. It runs the command the way `cm fix` validates patches (no network, empty package caches, writes only inside the repository). `✅ Build succeeded.` means `cm fix` can validate its patches; `🔒 Sandbox violations detected during command:` lines before it are informational. When it fails, fix the cause before any `cm fix` (for example, vendor Go modules with `go mod vendor`).
 
 ---
 
@@ -71,8 +72,8 @@ bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope staged
 # The whole branch compared with its upstream (or --base origin/main)
 bash "<skill-dir>/scripts/cm_diff_scan.sh" --scope branch
 
-# Report without blocking, with deeper impact analysis and extra context
-bash "<skill-dir>/scripts/cm_diff_scan.sh" --fail-on "" --depth 2 -c "Focus on the new order lookup endpoint"
+# Report without blocking, with more 1-hop neighbors and extra context
+bash "<skill-dir>/scripts/cm_diff_scan.sh" --fail-on "" -c "Focus on the new order lookup endpoint" -- --diff-max-neighbors 20
 ```
 
 ### Workflow A2: Optional Git Hook (`cm_git_hook.sh`)
@@ -104,9 +105,9 @@ Every `cm` flag, default, and environment variable is in [references/cli_referen
 | Situation | Add |
 | :--- | :--- |
 | You know the threat model, trust boundaries, or focus area | `-c "<context>"` (scans, `verify`, and `fix`) |
-| Complex cross-file logic, or the default model's findings look shallow | `--model gemini-4-argon` (safety blocks retry on fallback models; `--no-model-fallback` forbids that) |
-| A widely used function or API contract changed | `-- --diff-max-neighbors 20 --fail-on-truncation`; for callers farther away, a deep scan of their directories after the user agrees (`cm_diff_scan.sh --depth 2` works only up to cm 0.17.0: cm 0.18.0 always resolves 1 hop) |
-| You want to see what a diff scan will cover before it spends tokens (cm 0.18.0) | `cm_diff_scan.sh --dry-run`: a free preview of the changed files, 1-hop neighbors, and architecture, never a scan result |
+| Complex cross-file logic, or the default model's findings look shallow | `--model gemini-4-argon`, or `gemini-4-carbon` (Preview, cm 0.21.0) (safety blocks retry on fallback models; `--no-model-fallback` forbids that) |
+| A widely used function or API contract changed | `-- --diff-max-neighbors 20 --fail-on-truncation`; for callers farther away, a deep scan of their directories after the user agrees (`cm_diff_scan.sh --depth 2` works only up to cm 0.17.0: cm 0.18.0 and later always resolve 1 hop) |
+| You want to see what a diff scan will cover before it spends tokens (cm 0.18.0 and later) | `cm_diff_scan.sh --dry-run`: a free preview of the changed files, 1-hop neighbors, and architecture, never a scan result |
 | Large files time out, so the scan is INCOMPLETE | `-- --diff-job-timeout 20m` |
 | Many files changed | `-- --diff-workers 8` |
 | A CI gate must not pass with partial coverage | `--fail-on-truncation` |
@@ -125,7 +126,7 @@ Through `cm_exec.sh`, which reads the repository's own state:
 | An interrupted run (network drop, `Ctrl+C`) | `cm_exec.sh session list`, then `cm_exec.sh session resume <id> -y` (within 7 days) |
 | A run that must stop | `cm_exec.sh session cancel <id>` |
 | One finding, its patches, or its exploit artifacts | `cm_exec.sh report <id>`, `report --patches`, `report --artifacts` |
-| Filtered findings | `cm_exec.sh report --status OPEN --severity HIGH --sort time` (`--status` rejects `VERIFIED`: find those in `report -f json`) |
+| Filtered findings | `cm_exec.sh report --status OPEN --severity HIGH --sort time` (on cm 0.20.0 and later, `OPEN` matches every finding that isn't `FIXED` or `DISMISSED`, and `--status VERIFIED` or `EXPLOIT_FAILED` narrows it; up to 0.18.0, `--status` rejects `VERIFIED`: find those in `report -f json`) |
 | Token cost | `cm_exec.sh stats --since 24h`, `stats --session <id>`, `stats --json`, or `stats --jsonl` (cm 0.17.0: one JSON line for log pipelines) |
 | Diagnostics for a support case (cm 0.17.0) | `cm_exec.sh support-bundle --since 24h` (nothing is uploaded; add `--include-content` only with the user's consent, because it can contain source code) |
 | Config sanity after an edit | `cm_config_check.sh` and `cm_exec.sh init --verify` |
@@ -143,7 +144,7 @@ Never leave `.codemender/config.yaml` at generic defaults when scanning speciali
 2. **Non-Standard Extensions**: Add `.vue`, `.svelte`, `.swift` to `scan.extensions.include` (add `.yaml`, `.yml`, `.sh` only when explicitly auditing deployment manifests; `.tf`, `.hcl`, and C++ headers such as `.hh` and `.hxx` are included by default in `v0.16.0`; never globally add `.json`).
 3. **Polyglot / Monorepo**: Populate `project_paths` with active microservice roots (e.g., `["./services/auth", "./services/billing"]`).
 4. **Compiler Search Loop (>60s inside `exebox`)**: When `cm` wastes turns searching for compilers inside `exebox`, set `build.command: "true"` for scanning and rely on outer-shell verification.
-5. **Check Every Edit**: cm (0.16.0 and 0.17.0) doesn't warn about unknown or misspelled keys. After editing the config, run both checks:
+5. **Check Every Edit**: cm (0.16.0 through 0.21.0) doesn't warn about unknown or misspelled keys. After editing the config, run both checks:
    ```bash
    bash "<skill-dir>/scripts/cm_config_check.sh"        # unknown keys, invalid values, risky settings
    bash "<skill-dir>/scripts/cm_exec.sh" init --verify  # YAML syntax, team_id, build command, VCS
@@ -171,7 +172,7 @@ bash "<skill-dir>/scripts/cm_exec.sh" verify <finding-id> --skip-exploit-verific
 
 If `cm verify` appended `.exploit/` to `.gitignore`, revert that edit unless the user wants to keep it: `.git/info/exclude` already ignores `.exploit/`.
 
-Other verification options: `-c "<focus>"` steers the agent (for example toward one request path), `--model gemini-4-argon` helps with hard cases, and running `cm verify` again on a `DISMISSED` finding re-examines it. Read the verdict in `.exploit/info.yaml` and the reasoning in `.exploit/REPORT.md` (see [references/finding_format.md](references/finding_format.md)).
+Other verification options: `-c "<focus>"` steers the agent (for example toward one request path); the docs say `cm verify` works best with a cyber model, so pass one if the project has access through the Fairwind Program (`--model gemini-3.8-flash-cyber`); `--model gemini-4-argon` or `gemini-4-carbon` helps with hard cases (their built-in cyber safety can block exploit generation, which then retries on fallback models); and running `cm verify` again on a `DISMISSED` finding re-examines it. Read the verdict in `.exploit/info.yaml` and the reasoning in `.exploit/REPORT.md` (see [references/finding_format.md](references/finding_format.md)).
 
 ### 2. Strict Sandbox Policy & Triage Integrity
 * **NEVER turn off a safety boundary by default**: `--sandbox=false` turns off the OS sandbox (`exebox`), including its network isolation. Since cm 0.17.0, the workspace path boundary and the `command_policy.yaml` blocklist still apply unless `--allow-all-paths` or `--allow-all-commands` is also passed; cm 0.17.0 removed `--unrestricted`, which turned off all three at once in 0.16.0. Running `cm verify` with any of them on untrusted repositories exposes the host to Prompt Injection $\rightarrow$ RCE. Require **explicit per-invocation human approval** (the guard asks).
@@ -186,7 +187,8 @@ Other verification options: `-c "<focus>"` steers the agent (for example toward 
 #    (reads the local state database; for the current state of a change, use the diff scan's --format sarif --output instead)
 bash "<skill-dir>/scripts/cm_exec.sh" report -f sarif > codemender-results.sarif
 
-# 2. Query actionable findings (OPEN / VERIFIED / REOPENED) via JSON or interactive Table
+# 2. Query findings via JSON or the table (on cm 0.20.0 and later, add --status OPEN for every actionable one:
+#    OPEN, VERIFIED, EXPLOIT_FAILED, and REOPENED)
 bash "<skill-dir>/scripts/cm_exec.sh" report -f json
 bash "<skill-dir>/scripts/cm_exec.sh" report -f table
 
