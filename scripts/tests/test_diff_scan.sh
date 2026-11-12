@@ -182,9 +182,13 @@ printf '%s\n' "${OUT}" | grep -q -- '--depth 1 is already its behavior' || fail 
 STUB_CM_VERSION=0.18.0 STUB_FIND_MODE=clean scan --depth 2
 [ "${RC}" -eq 2 ] || fail "depth 2 on 0.18.0: expected exit 2, got ${RC}: ${OUT}"
 [ -z "$(find_call)" ] || fail "depth 2 on 0.18.0: cm should not run"
-printf '%s\n' "${OUT}" | grep -q 'removed --diff-depth' || fail "depth 2 on 0.18.0: missing explanation: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'cm 0.18.0 has no --diff-depth (removed in 0.18.0)' || fail "depth 2 on 0.18.0: missing explanation: ${OUT}"
 printf '%s\n' "${OUT}" | grep -q -- '--diff-max-neighbors' || fail "depth 2 on 0.18.0: missing alternative: ${OUT}"
 git status --porcelain | grep -qx ' M main.py' || fail "depth 2 on 0.18.0: the working tree should be unchanged"
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.21.0 STUB_FIND_MODE=clean scan --depth 2
+[ "${RC}" -eq 2 ] || fail "depth 2 on 0.21.0: expected exit 2, got ${RC}: ${OUT}"
+printf '%s\n' "${OUT}" | grep -q 'cm 0.21.0 has no --diff-depth (removed in 0.18.0)' || fail "depth 2 on 0.21.0: the note must name the release that removed it: ${OUT}"
 for bad in abc 0 1.5; do
   : > "${STUB_LOG}"
   scan --depth "${bad}"

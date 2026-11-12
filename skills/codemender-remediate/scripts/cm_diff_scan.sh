@@ -95,7 +95,7 @@ for arg in ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; do
       exit 2
       ;;
     --dry-run|--dry-run=*)
-      echo "❌ ${arg} makes cm 0.18.0 write a scope preview instead of findings, so cm_diff_scan.sh refuses it after --: a preview must never pass for a clean scan that the git hook could reuse. Use cm_diff_scan.sh --dry-run instead, which keeps the preview apart." >&2
+      echo "❌ ${arg} makes cm 0.18.0 and later write a scope preview instead of findings, so cm_diff_scan.sh refuses it after --: a preview must never pass for a clean scan that the git hook could reuse. Use cm_diff_scan.sh --dry-run instead, which keeps the preview apart." >&2
       exit 2
       ;;
     --validate|--validate=*)
@@ -148,7 +148,7 @@ if [ -n "${DEPTH}" ] && version_ge "${CM_VERSION}" 0.18.0; then
     echo "ℹ️  cm ${CM_VERSION} always resolves 1-hop impact, so --depth 1 is already its behavior (not passed to cm)."
     DEPTH=""
   else
-    echo "❌ --depth ${DEPTH} needs cm 0.17.0 or earlier: cm ${CM_VERSION} removed --diff-depth, and its diff scans resolve only 1-hop callers. To cover more of the change's impact, pass -- --diff-max-neighbors 20 --fail-on-truncation; for callers farther away, ask the user before a deep scan of their directories: bash \"${CM_EXEC}\" find <dir> -y" >&2
+    echo "❌ --depth ${DEPTH} needs cm 0.17.0 or earlier: cm ${CM_VERSION} has no --diff-depth (removed in 0.18.0), and its diff scans resolve only 1-hop callers. To cover more of the change's impact, pass -- --diff-max-neighbors 20 --fail-on-truncation; for callers farther away, ask the user before a deep scan of their directories: bash \"${CM_EXEC}\" find <dir> -y" >&2
     exit 2
   fi
 fi
