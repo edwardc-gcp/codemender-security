@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **CodeMender Public Preview Access**: Access to the Google Cloud CodeMender (`cm`) API and artifacts is currently in **Public Preview** (contact your Google Cloud representative for project allowlisting). Ensure your Google Cloud account is authenticated and associated with an authorized project where the Agent Platform API (`aiplatform.googleapis.com`) is enabled before running scans.
 
-The `codemender-security` plugin equips AI coding agents with autonomous security auditing, exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`) 0.16.0 or later** (0.18.0 recommended) on the Gemini Enterprise Agent Platform.
+The `codemender-security` plugin equips AI coding agents with autonomous security auditing, exploit verification, and context-aware patch remediation powered by **Google Cloud CodeMender (`cm`) 0.16.0 or later** (0.21.0 recommended; at least 0.20.0, which no longer reports zero findings for directories it can't read) on the Gemini Enterprise Agent Platform.
 
 Built on the open [Agent Plugins specification](https://agent-plugins.org/), this plugin bundles curated Agent Skills, safety guardrails, and operational runbooks for **Google Antigravity**, **Anthropic Claude Code**, and **OpenAI Codex**.
 
@@ -103,7 +103,7 @@ Before using the plugin, ensure your environment meets the following requirement
 - **[`cm_git_hook.sh`](./scripts/cm_git_hook.sh)** *(Opt-In Git Hook)*:
   Installs a pre-commit hook that scans the staged changes (or, with `--pre-push`, a pre-push hook that scans the pushed branch) and blocks on `CRITICAL`/`HIGH` findings. It reuses an earlier `cm_diff_scan.sh --scope staged` result for the same content (only a real findings report counts, never a preview), never overwrites existing hooks, and doesn't block when the scan can't run. Skip once with `--no-verify`; keep a CI gate as well.
 - **[`cm_remediate_loop.sh`](./scripts/cm_remediate_loop.sh)** *(Atomic Multi-Vulnerability Remediation Loop)*:
-  Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), passes `--no-reset` to `cm fix` on CodeMender 0.17.0 and later, runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis (extra `cm fix` flags such as `--model` go after `--`), and a re-scan of the change after every fix to pick the next target and catch regressions.
+  Protects uncommitted work with a checkpoint commit (restored as uncommitted changes afterwards), passes `--no-reset` to `cm fix` on CodeMender 0.17.0 and later, checks `build.command` once in CodeMender's sandbox before the first fix on CodeMender 0.21.0 and later (`cm build`, no model tokens; a build that can't pass there stops the loop before any fix session), runs declarative Strategy Pipeline polyglot build gates (`OUTER_BUILD_CMD`), per-finding `cm fix` synthesis (extra `cm fix` flags such as `--model` go after `--`), and a re-scan of the change after every fix to pick the next target and catch regressions.
 - **[`check_env.sh`](./scripts/check_env.sh)** *(Diagnostic Environment Health Checker)*:
   Checks that `cm` is on your PATH and at version 0.16.0 or later, runs the side-effect-free `cm health` check (credentials, project, endpoint reachability, and authorization), and checks workspace data protection, with a fix-it hint for each problem.
 - **[`cm_config_check.sh`](./scripts/cm_config_check.sh)** *(Config Checker)*:
@@ -122,7 +122,7 @@ Once installed, simply prompt your coding agent using natural language. The agen
 
 1. **Discovery & Scoping**: The agent initializes `.codemender/` and runs a deep scan (CodeMender's thorough but slow default mode; the agent confirms the cost with you first) or a quick scan of the riskiest modules, looking for high-risk vulnerabilities (hardcoded credentials, open CORS, SQL injection, unsanitized inputs).
 2. **Optional Exploit Verification**: When proof of exploitability matters, uses `cm verify` to write and run a proof-of-concept exploit in the sandbox (expect minutes and many tokens per finding) to eliminate false positives.
-3. **Adaptive Remediation & Hard Gate**: Synthesizes context-aware patches (`cm fix`), validates the build/syntax in the outer shell, and reverts any patch that breaks compilation.
+3. **Adaptive Remediation & Hard Gate**: Checks first that the build passes in CodeMender's sandbox (CodeMender 0.21.0 and later), synthesizes context-aware patches (`cm fix`), validates the build/syntax in the outer shell, and reverts any patch that breaks compilation.
 4. **Checkpoint Protection**: Commits uncommitted work as a checkpoint before `cm fix` (whose workspace reset would otherwise delete it; on CodeMender 0.17.0 and later the loop also passes `--no-reset`), commits each validated fix, then restores everything as uncommitted changes with the fixes applied (or keeps the commits with `--keep-commits`).
 
 ### Scenario 2: Secure Inner Loop Before You Commit
