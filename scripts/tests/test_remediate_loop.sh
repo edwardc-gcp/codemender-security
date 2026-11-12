@@ -175,4 +175,51 @@ assert_user_work_restored "sarif"
 [ -f results.sarif ] || fail "sarif: the untracked results.sarif report was deleted"
 git status --porcelain | grep -q '^?? results.sarif$' || fail "sarif: results.sarif should stay untracked"
 
-echo "✅ cm_remediate_loop.sh tests passed (13 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config, --no-reset, *.sarif)"
+# 14. cm 0.21.0+: build.command from config.yaml runs once through `cm build` (in the sandbox) before the first cm fix.
+preflight_config() { printf 'build:\n  command: "echo build"\n' > .codemender/config.yaml; }
+new_repo preflight
+preflight_config
+echo 'conn = "UNSAFE"' > db.py
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.21.0 STUB_FIX_MODE=by-id run_loop f-app f-db
+[ "$(grep -c '^build ' "${STUB_LOG}")" -eq 1 ] || fail "preflight: cm build should run exactly once: $(grep -E '^(build|fix) ' "${STUB_LOG}")"
+[ "$(grep -E '^(build|fix) ' "${STUB_LOG}" | head -n 1 | cut -d' ' -f1)" = "build" ] || fail "preflight: cm build should run before the first cm fix"
+grep '^build ' "${STUB_LOG}" | grep -q -- '--force' || fail "preflight: cm build needs --force to run without a prompt"
+grep -q 'passes in the sandbox' "${WORK}/loop.log" || fail "preflight: missing the success message"
+! grep -q 'UNSAFE' app.py || fail "preflight: app.py was not fixed"
+! grep -q 'UNSAFE' db.py || fail "preflight: db.py was not fixed"
+assert_user_work_restored "preflight"
+
+# 15. A build that fails in the sandbox stops the loop with exit 2 before any cm fix, and the user's work comes back.
+new_repo preflight_fail
+preflight_config
+: > "${STUB_LOG}"
+rc=0
+STUB_CM_VERSION=0.21.0 STUB_BUILD_MODE=fail bash "${LOOP}" -b true f-001 > "${WORK}/loop.log" 2>&1 || rc=$?
+[ "${rc}" -eq 2 ] || { cat "${WORK}/loop.log" >&2; fail "preflight-fail: expected exit 2, got ${rc}"; }
+! grep -q '^fix ' "${STUB_LOG}" || fail "preflight-fail: cm fix must not run after a failed preflight"
+grep -q 'fails in CodeMender' "${WORK}/loop.log" || fail "preflight-fail: missing the failure message"
+grep -q 'Could not resolve host' "${WORK}/loop.log" || fail "preflight-fail: the build output should be shown"
+assert_user_work_restored "preflight-fail"
+[ "$(cat app.py)" = 'query = "UNSAFE"' ] || fail "preflight-fail: app.py should be unchanged"
+
+# 16. No preflight with --no-build-preflight, before cm 0.21.0 (whose builds didn't use the sandbox), or with a no-op
+#     build.command.
+new_repo preflight_skip
+preflight_config
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.21.0 STUB_BUILD_MODE=fail STUB_FIX_MODE=patch run_loop --no-build-preflight f-001
+! grep -q '^build ' "${STUB_LOG}" || fail "preflight-skip: --no-build-preflight should skip cm build"
+grep -q '^fix f-001 ' "${STUB_LOG}" || fail "preflight-skip: cm fix should run"
+new_repo preflight_020
+preflight_config
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.20.0 STUB_BUILD_MODE=fail STUB_FIX_MODE=patch run_loop f-001
+! grep -q '^build ' "${STUB_LOG}" || fail "preflight-0.20.0: no preflight before cm 0.21.0"
+new_repo preflight_noop
+printf 'build:\n  command: "true"\n' > .codemender/config.yaml
+: > "${STUB_LOG}"
+STUB_CM_VERSION=0.21.0 STUB_BUILD_MODE=fail STUB_FIX_MODE=patch run_loop f-001
+! grep -q '^build ' "${STUB_LOG}" || fail "preflight-noop: a no-op build.command needs no preflight"
+
+echo "✅ cm_remediate_loop.sh tests passed (16 scenarios with stub cm: checkpoint, staging, diff-driven targets, strict gate, cm fix flags, outer gate from config, --no-reset, *.sarif, sandbox build preflight)"

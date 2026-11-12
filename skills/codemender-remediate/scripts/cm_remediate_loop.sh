@@ -4,16 +4,20 @@
 # official autofix job does, and re-scans the change with cm_diff_scan.sh after every fix.
 #
 # Usage: cm_remediate_loop.sh [-c "<guidance>"] [-b "<outer-build-cmd>"] [--keep-commits] [--strict]
-#                             [--base REF] [--max-fixes N] [--fail-on SEVERITIES] [--all-open | finding_id ...]
-#                             [-- CM_FIX_FLAGS...]
+#                             [--base REF] [--max-fixes N] [--fail-on SEVERITIES] [--no-build-preflight]
+#                             [--all-open | finding_id ...] [-- CM_FIX_FLAGS...]
 #   (default)       fix the findings introduced by the current change (uncommitted work, else the branch vs --base or
 #                   its upstream), re-scanning after every fix
 #   finding_id ...  fix exactly these findings; each fix commit is scanned for new blocking findings
-#   --all-open      fix OPEN / VERIFIED / REOPENED findings from the local state database (for example from an earlier full scan)
+#   --all-open      fix every finding in the local state database that isn't FIXED or DISMISSED (OPEN, VERIFIED,
+#                   EXPLOIT_FAILED, or REOPENED), for example after an earlier full scan
 #   --strict        revert a fix commit when the re-scan still reports the target or finds new findings
 #   --keep-commits  keep the checkpoint and fix commits instead of restoring uncommitted changes
+#   --no-build-preflight  don't check build.command in CodeMender's sandbox before the first fix (cm 0.21.0 or later)
 #   -- FLAGS        pass the rest to every `cm fix` call, for example --model gemini-4-argon or --no-cache
-#   With cm 0.17.0 or later, every `cm fix` call also gets --no-reset, so it never resets the workspace.
+#   With cm 0.17.0 or later, every `cm fix` call also gets --no-reset, so it never resets the workspace. With cm 0.21.0
+#   or later, a configured build.command first runs once through `cm build` (no model tokens): cm fix validates patches
+#   with it in the same sandbox, so a build that fails there stops the loop (exit 2) before any fix session starts.
 
 set -euo pipefail
 
@@ -28,6 +32,7 @@ ALL_OPEN=false
 BASE_REF=""
 MAX_FIXES=10
 FAIL_ON="CRITICAL,HIGH"
+BUILD_PREFLIGHT=true
 TARGET_FIDS=()
 FIX_ARGS=()
 
@@ -65,8 +70,12 @@ while [ $# -gt 0 ]; do
       FAIL_ON="${2-}"
       shift 2
       ;;
+    --no-build-preflight)
+      BUILD_PREFLIGHT=false
+      shift
+      ;;
     -h|--help)
-      sed -n '2,16p' "$0" | sed -E 's/^# ?//'
+      sed -n '2,20p' "$0" | sed -E 's/^# ?//'
       exit 0
       ;;
     --)
@@ -84,7 +93,7 @@ done
 for arg in ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; do
   case "${arg}" in
     --export|--export=*)
-      echo "❌ --export isn't a fix-run flag (and cm 0.16.0 doesn't implement it); review generated patches with: cm_exec.sh report --patches" >&2
+      echo "❌ --export isn't a fix-run flag (and cm 0.16.0 through 0.21.0 don't implement it); review generated patches with: cm_exec.sh report --patches" >&2
       exit 1
       ;;
   esac
@@ -300,7 +309,8 @@ fi
 
 # 3. Choose remediation targets
 #   explicit IDs -> fix exactly those findings
-#   --all-open   -> OPEN / VERIFIED / REOPENED findings from the local state database (for example from an earlier full scan).
+#   --all-open   -> every finding in the local state database that isn't FIXED or DISMISSED (OPEN, VERIFIED,
+#                   EXPLOIT_FAILED, REOPENED), the same set as `cm report --status OPEN` in cm 0.20.0 and later.
 #                   Diff scans never update stored statuses, so this list can include findings that are already fixed.
 #   default      -> findings introduced by the current change, from a diff scan of everything since the base: the
 #                   checkpoint base when uncommitted work was checkpointed, else --base, else the upstream branch.
@@ -397,9 +407,44 @@ else:
 PY
 }
 
+# cm 0.21.0+ runs build.command inside the sandbox, both for `cm build` and for the build validation inside `cm fix`
+# (release notes). One `cm build` before the first fix uses no model tokens and shows whether that validation can pass
+# at all, for example when the build needs the network, a credential that the sandbox hides, or a path it can't
+# write, before a fix session spends its tokens on a patch that can't be validated.
+BUILD_PREFLIGHT_DONE=false
+build_preflight() {
+  [ "${BUILD_PREFLIGHT_DONE}" = false ] || return 0
+  BUILD_PREFLIGHT_DONE=true
+  [ "${BUILD_PREFLIGHT}" = true ] || return 0
+  version_ge "${CM_VERSION}" 0.21.0 || return 0
+  [ -f ".codemender/config.yaml" ] || return 0
+  local cmd log="${STATE_DIR}/build-preflight.log"
+  cmd="$(config_build_command 2>/dev/null || true)"
+  case "${cmd}" in
+    "" | true | :) return 0 ;;
+  esac
+  echo "🧱 Checking build.command in CodeMender's sandbox before the first fix (cm build, no model tokens)..."
+  if "${CM_EXEC}" build "${PROJECT_ROOT}" --force </dev/null >"${log}" 2>&1; then
+    echo "✅ build.command passes in the sandbox, so cm fix can validate its patches."
+    return 0
+  fi
+  {
+    echo "❌ build.command fails in CodeMender's sandbox, so cm fix couldn't validate a patch. No fix session was started."
+    grep -v -E '^[^ ]+Z \[(DEBUG|INFO|WARN)\]' "${log}" | grep -v -E '^[[:space:]]*$' | tail -n 12 | sed 's/^/   /' || true
+    echo "   Full output: ${log}"
+    echo "   The sandbox has no network, hides credential directories and secret-like variables, and allows writes only"
+    echo "   inside the repository. Install dependencies before the run, fix build.command, or pass --no-build-preflight"
+    echo "   to try cm fix anyway."
+  } >&2
+  return 1
+}
+
 # One fix: cm fix, outer build gate, autofix-style staging, commit. Returns 0 when a fix commit was created.
 remediate_one() {
   local fid="$1"
+  if ! build_preflight; then
+    exit 2
+  fi
   echo "🛠️  Remediating finding: ${fid}"
   if ! "${CM_EXEC}" fix "${fid}" -c "${GUIDANCE}" --bypass-warning -y ${NO_RESET_ARGS[@]+"${NO_RESET_ARGS[@]}"} ${FIX_ARGS[@]+"${FIX_ARGS[@]}"}; then
     echo "⚠️  cm fix failed for ${fid}; dropping any partial patch."
@@ -509,7 +554,7 @@ except Exception as e:
   fi
 
   if [ ${#TARGET_FIDS[@]} -eq 0 ]; then
-    echo "✅ No actionable (OPEN / VERIFIED / REOPENED) findings to remediate."
+    echo "✅ No actionable findings to remediate (every stored finding is FIXED or DISMISSED)."
     exit 0
   fi
 

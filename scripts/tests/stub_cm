@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stub CodeMender CLI for the plugin's regression tests: no network access and no model calls.
 #   STUB_FIX_MODE=patch|reset-then-patch|patch-with-artifacts|fail|by-id|ineffective   behavior of `cm fix` (default: patch)
+#   STUB_BUILD_MODE=pass|fail                     result of `cm build` (default: pass), with the real CLI's output lines
 #   STUB_CM_VERSION=<x.y.z>                       version that `cm --version` reports (default: 0.16.0); from 0.18.0,
 #                                                 `cm find` rejects --diff-depth and accepts --dry-run, like the real CLI
 #   STUB_LOG=<file>                              append every invocation's arguments to this file
@@ -57,6 +58,17 @@ case "${1:-}" in
     ;;
   --version)
     echo "cm version ${STUB_CM_VERSION:-0.16.0} (stub)"
+    ;;
+  build)
+    # Output and exit codes observed with cm 0.21.0, which runs build.command inside the sandbox (no network there).
+    echo "🔧 Running: stub build command"
+    if [ "${STUB_BUILD_MODE:-pass}" = fail ]; then
+      echo "curl: (6) Could not resolve host: registry.npmjs.org"
+      echo "❌ Build failed."
+      echo "Error: build command failed: exit status 6" >&2
+      exit 1
+    fi
+    echo "✅ Build succeeded."
     ;;
   find)
     # Diff-mode emulation: STUB_FIND_MODE=clean|findings|dynamic|error|config-error|incomplete|object-report|no-report;
