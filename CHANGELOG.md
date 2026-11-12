@@ -2,6 +2,23 @@
 
 All notable changes to the `codemender-security` community plugin are documented in this file.
 
+## [1.7.0] - 2026-11-12
+
+Works with CodeMender CLI 0.16.0 through 0.21.0 (0.21.0 recommended).
+
+### Features
+- `cm_remediate_loop.sh` checks `build.command` in CodeMender's sandbox before the first fix. CodeMender 0.21.0 runs `build.command` inside the sandbox both for `cm build` and for the build validation in `cm fix`, so one `cm build` (no model tokens) shows whether `cm fix` can validate a patch at all. When the build fails there, for example because it needs the network or Go modules that aren't vendored, the loop stops with exit `2` and shows the build's last lines before any fix session spends tokens. The full output goes to `.codemender/build-preflight.log`, and `--no-build-preflight` skips the check. Older CLIs and empty or no-op build commands aren't affected.
+- The audit skill checks a new or changed `build.command` in the sandbox with `cm_exec.sh build --force` on CodeMender 0.21.0 and later.
+
+### CodeMender 0.20.0 and 0.21.0 Support
+- `cm report --status` (0.20.0) accepts `VERIFIED` and `EXPLOIT_FAILED`, and `OPEN` now matches every finding that isn't `FIXED` or `DISMISSED` (observed). The skills and references no longer say that `VERIFIED` is rejected, and `cm_remediate_loop.sh --all-open` documents that it picks the same set (its behavior doesn't change).
+- The CLI and config references cover 0.21.0: builds inside the sandbox (no network, writes only inside the repository, `.npmrc` unreadable, caches that start empty, `GOPROXY=off` for Go), `cm vcs diff` without diff drivers, repository Git hooks that still run in a build command's own git commands (observed, although the release notes say hooks are disabled), Gemini 4 Carbon (Preview) and Gemini 4 Carbon for cyber, the `cm verify` advice to use a cyber model, the 30-minute timeout for silent turns, and the 0.20.0 fix for scans that reported zero findings for unreadable directories.
+- Observed behaviors re-checked on 0.21.0: the `cm init` template and command policy are unchanged since 0.17.0, unknown config keys still aren't flagged, `cm fix --export` still isn't implemented, and the `--architecture` example in `cm verify --help` is still an unknown flag.
+
+### Fixes
+- On CodeMender 0.18.0 and later, `cm_diff_scan.sh --depth 2` said that the installed release (for example 0.21.0) removed `--diff-depth`; it now names 0.18.0, the release that removed it.
+- The audit skill's diff-scan example used `--depth 2`, which CodeMender 0.18.0 and later refuse; it now passes `--diff-max-neighbors 20` instead.
+
 ## [1.6.0] - 2026-11-06
 
 Works with CodeMender CLI 0.16.0 through 0.18.0 (0.18.0 recommended).
